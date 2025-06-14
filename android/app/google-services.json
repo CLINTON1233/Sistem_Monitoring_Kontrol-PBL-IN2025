@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "862133095308",
+    "project_id": "sistem-monitoring-kontrol",
+    "storage_bucket": "sistem-monitoring-kontrol.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:862133095308:android:9682b7745ce681312de4a9",
+        "android_client_info": {
+          "package_name": "com.example.sistem_monitoring_kontrol"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRkhuJjCkQ_bicsNnR6cpdxRRmjYqUibk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
