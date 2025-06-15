@@ -103,7 +103,7 @@ class _NotificationPageState extends State<NotificationPage> {
 
           // Notifikasi pH Rendah
           _buildNotificationCard(
-            icon: Icons.science,
+            icon: Icons.blur_circular,
             iconColor: Colors.orange,
             iconBgColor: Colors.orange.withOpacity(0.1),
             title: 'pH Level Rendah',
@@ -168,7 +168,7 @@ class _NotificationPageState extends State<NotificationPage> {
 
           // Notifikasi TDS Stabil
           _buildNotificationCard(
-            icon: Icons.waves,
+            icon: Icons.scatter_plot_outlined,
             iconColor: Colors.indigo,
             iconBgColor: Colors.indigo.withOpacity(0.1),
             title: 'TDS Level Stabil',

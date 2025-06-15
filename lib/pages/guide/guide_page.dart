@@ -79,13 +79,14 @@ class _GuidePageState extends State<GuidePage> {
             _buildGuideCard(
               title: 'Panduan Pengelolaan Tanaman',
               subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/project.jpg', // Ganti dengan path gambar Anda
+              image: 'assets/project.jpg',
               onTap: () {
-                // Navigate to plant management guide
+                // Navigate to plant management guide dengan gambar
                 _showGuideDetail(
                   context,
                   'Panduan Pengelolaan Tanaman',
                   _getPlantManagementContent(),
+                  'assets/project.jpg', // Tambahkan parameter gambar
                 );
               },
             ),
@@ -95,13 +96,14 @@ class _GuidePageState extends State<GuidePage> {
             _buildGuideCard(
               title: 'Panduan Pemberian Nutrisi Tanaman Hidroponik',
               subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/jeje.jpg', // Ganti dengan path gambar Anda
+              image: 'assets/jeje.jpg',
               onTap: () {
-                // Navigate to nutrition guide
+                // Navigate to nutrition guide dengan gambar
                 _showGuideDetail(
                   context,
                   'Panduan Pemberian Nutrisi Tanaman Hidroponik',
                   _getNutritionGuideContent(),
+                  'assets/jeje.jpg', // Tambahkan parameter gambar
                 );
               },
             ),
@@ -111,12 +113,13 @@ class _GuidePageState extends State<GuidePage> {
             _buildGuideCard(
               title: 'Panduan Monitoring Sistem',
               subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/greenhouse.jpg', // Ganti dengan path gambar Anda
+              image: 'assets/greenhouse.jpg',
               onTap: () {
                 _showGuideDetail(
                   context,
                   'Panduan Monitoring Sistem',
                   _getMonitoringGuideContent(),
+                  'assets/greenhouse.jpg', // Tambahkan parameter gambar
                 );
               },
             ),
@@ -125,12 +128,13 @@ class _GuidePageState extends State<GuidePage> {
             _buildGuideCard(
               title: 'Panduan Troubleshooting',
               subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/pbl.jpg', // Ganti dengan path gambar Anda
+              image: 'assets/pbl.jpg',
               onTap: () {
                 _showGuideDetail(
                   context,
                   'Panduan Troubleshooting',
                   _getTroubleshootingContent(),
+                  'assets/pbl.jpg', // Tambahkan parameter gambar
                 );
               },
             ),
@@ -357,11 +361,22 @@ class _GuidePageState extends State<GuidePage> {
     );
   }
 
-  void _showGuideDetail(BuildContext context, String title, String content) {
+  // Modifikasi method ini untuk menerima parameter gambar
+  void _showGuideDetail(
+    BuildContext context,
+    String title,
+    String content,
+    String imagePath,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GuideDetailPage(title: title, content: content),
+        builder:
+            (context) => GuideDetailPage(
+              title: title,
+              content: content,
+              imagePath: imagePath, // Tambahkan parameter gambar
+            ),
       ),
     );
   }
@@ -494,15 +509,17 @@ Panduan Troubleshooting Sistem Hidroponik
   }
 }
 
-// Halaman detail panduan
+// Halaman detail panduan - DIMODIFIKASI untuk menampilkan gambar
 class GuideDetailPage extends StatelessWidget {
   final String title;
   final String content;
+  final String imagePath; // Tambahkan parameter gambar
 
   const GuideDetailPage({
     super.key,
     required this.title,
     required this.content,
+    required this.imagePath, // Wajib ada gambar
   });
 
   @override
@@ -540,16 +557,106 @@ class GuideDetailPage extends StatelessWidget {
               ),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Text(
-              content,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                height: 1.6,
-                color: const Color(0xFF2E2E2E),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Gambar di bagian atas detail
+              Container(
+                height: 200,
+                width: double.infinity,
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE0E0E0)),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    imagePath,
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      // Fallback jika gambar tidak ditemukan
+                      return Container(
+                        height: 200,
+                        color: const Color(0xFFF0F4F0),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.eco_outlined,
+                                size: 48,
+                                color: const Color(0xFF4B715A),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Gambar tidak ditemukan',
+                                style: GoogleFonts.poppins(
+                                  color: const Color(0xFF4B715A),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
-            ),
+
+              // Badge
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4CAF50),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'PANDUAN LENGKAP',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Konten text
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  content,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    height: 1.6,
+                    color: const Color(0xFF2E2E2E),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
+import 'package:sistem_monitoring_kontrol/pages/education/education_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/statistic/statistic_page.dart';
@@ -846,6 +847,17 @@ class _AboutUsPageState extends State<AboutUsPage> {
                     );
                   },
                   isActive: false,
+                ),
+                _buildDrawerItem(
+                  icon: Icons.assignment_outlined,
+                  title: 'Edukasi',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => EducationPage()),
+                    );
+                  },
                 ),
                 _buildDrawerItem(
                   icon: Icons.logout,

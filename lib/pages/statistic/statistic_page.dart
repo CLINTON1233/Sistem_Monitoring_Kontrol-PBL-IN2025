@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:sistem_monitoring_kontrol/pages/about_us/about_us_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
+import 'package:sistem_monitoring_kontrol/pages/education/education_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
@@ -78,7 +79,6 @@ class _StatisticPageState extends State<StatisticPage> {
       'water': 88.0,
     },
   ];
-
   void _onBottomNavTap(int index) {
     if (index == _currentIndex) return;
 
@@ -138,7 +138,7 @@ class _StatisticPageState extends State<StatisticPage> {
           children: [
             // Header Info
             _buildHeaderInfo(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 10),
 
             // Growth Progress Chart
             _buildGrowthProgressCard(),
@@ -146,11 +146,11 @@ class _StatisticPageState extends State<StatisticPage> {
 
             // Sensor Data Summary
             _buildSensorSummaryCards(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Time Period Selector
-            _buildTimePeriodSelector(),
-            const SizedBox(height: 20),
+            // _buildTimePeriodSelector(),
+            // const SizedBox(height: 20),
 
             // Sensor Charts
             _buildSensorCharts(),
@@ -216,8 +216,8 @@ class _StatisticPageState extends State<StatisticPage> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF4B715A),
-            const Color(0xFF4B715A).withOpacity(0.8),
+            const Color(0xFFF8F9FA),
+            const Color(0xFFF8F9FA).withOpacity(0.8),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -227,10 +227,14 @@ class _StatisticPageState extends State<StatisticPage> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: const Color(0xFF4B715A).withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.eco, color: Colors.white, size: 32),
+            child: const Icon(
+              Icons.eco,
+              color: const Color(0xFF4B715A),
+              size: 32,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -240,7 +244,7 @@ class _StatisticPageState extends State<StatisticPage> {
                 Text(
                   'Pakcoy Hidroponik',
                   style: GoogleFonts.poppins(
-                    color: Colors.white,
+                    color: Colors.black,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
@@ -249,7 +253,7 @@ class _StatisticPageState extends State<StatisticPage> {
                 Text(
                   'Monitoring 7 hari terakhir',
                   style: GoogleFonts.poppins(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.black.withOpacity(0.9),
                     fontSize: 14,
                   ),
                 ),
@@ -258,14 +262,14 @@ class _StatisticPageState extends State<StatisticPage> {
                   children: [
                     const Icon(
                       Icons.trending_up,
-                      color: Colors.greenAccent,
+                      color: Colors.green,
                       size: 16,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       '↑ 12% pertumbuhan',
                       style: GoogleFonts.poppins(
-                        color: Colors.greenAccent,
+                        color: Colors.green,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -307,16 +311,8 @@ class _StatisticPageState extends State<StatisticPage> {
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: 200,
-            width: 200,
             child: Stack(
               children: [
-                CircularProgressIndicator(
-                  value: 0.75,
-                  strokeWidth: 12,
-                  backgroundColor: Colors.red.withOpacity(0.3),
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
-                ),
                 Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -505,23 +501,23 @@ class _StatisticPageState extends State<StatisticPage> {
     );
   }
 
-  Widget _buildTimePeriodSelector() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          _buildTabButton('Day', 'Hari'),
-          _buildTabButton('Week', 'Minggu'),
-          _buildTabButton('Month', 'Bulan'),
-          _buildTabButton('All time', 'Semua'),
-        ],
-      ),
-    );
-  }
+  // Widget _buildTimePeriodSelector() {
+  //   return Container(
+  //     padding: const EdgeInsets.all(4),
+  //     decoration: BoxDecoration(
+  //       color: Colors.grey[100],
+  //       borderRadius: BorderRadius.circular(12),
+  //     ),
+  //     child: Row(
+  //       children: [
+  //         _buildTabButton('Day', 'Hari'),
+  //         _buildTabButton('Week', 'Minggu'),
+  //         // _buildTabButton('Month', 'Bulan'),
+  //         // _buildTabButton('All time', 'Semua'),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildTabButton(String value, String label) {
     bool isSelected = _selectedTab == value;
@@ -554,19 +550,60 @@ class _StatisticPageState extends State<StatisticPage> {
 
   Widget _buildSensorCharts() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildChartCard('Suhu & Kelembaban', _buildTemperatureHumidityChart()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Text(
+            'Data grafik sensor selama 7 hari',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _buildChartCard(
+          'Suhu',
+          _buildTemperatureChart(),
+          '°C',
+          '27.1',
+          Colors.green,
+        ),
         const SizedBox(height: 16),
-        _buildChartCard('pH & TDS', _buildPHTDSChart()),
+        _buildChartCard(
+          'Kelembaban',
+          _buildHumidityChart(),
+          '%',
+          '77.0',
+          Colors.blue,
+        ),
         const SizedBox(height: 16),
-        _buildChartCard('Ketinggian Air', _buildWaterLevelChart()),
+        _buildChartCard('pH', _buildPHChart(), 'pH', '6.2', Colors.purple),
+        const SizedBox(height: 16),
+        _buildChartCard('TDS', _buildTDSChart(), 'ppm', '845', Colors.teal),
+        const SizedBox(height: 16),
+        _buildChartCard(
+          'Ketinggian Air',
+          _buildWaterLevelChart(),
+          '%',
+          '83.0',
+          Colors.indigo,
+        ),
       ],
     );
   }
 
-  Widget _buildChartCard(String title, Widget chart) {
+  Widget _buildChartCard(
+    String title,
+    Widget chart,
+    String unit,
+    String currentValue,
+    Color color,
+  ) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -581,27 +618,103 @@ class _StatisticPageState extends State<StatisticPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[600],
+                ),
+              ),
+              Icon(Icons.more_horiz, color: Colors.grey[400], size: 20),
+            ],
           ),
-          const SizedBox(height: 16),
-          SizedBox(height: 200, child: chart),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                currentValue,
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  unit,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, color: Colors.green, size: 8),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Live',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(height: 120, child: chart),
         ],
       ),
     );
   }
 
-  Widget _buildTemperatureHumidityChart() {
+  Widget _buildTemperatureChart() {
     return LineChart(
       LineChartData(
-        gridData: FlGridData(show: false),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 5,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+          },
+        ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 35,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()}°C',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+            ),
+          ),
           rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
@@ -612,7 +725,10 @@ class _StatisticPageState extends State<StatisticPage> {
                 if (index >= 0 && index < _weeklyData.length) {
                   return Text(
                     _weeklyData[index]['day'],
-                    style: GoogleFonts.poppins(fontSize: 10),
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
                   );
                 }
                 return const Text('');
@@ -631,34 +747,61 @@ class _StatisticPageState extends State<StatisticPage> {
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.orange,
+            color: Colors.green,
             barWidth: 3,
-            dotData: FlDotData(show: false),
-          ),
-          LineChartBarData(
-            spots:
-                _weeklyData.asMap().entries.map((entry) {
-                  return FlSpot(
-                    entry.key.toDouble(),
-                    (entry.value['humidity'] as num).toDouble(),
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                if (index == _weeklyData.length - 1) {
+                  return FlDotCirclePainter(
+                    radius: 6,
+                    color: Colors.green,
+                    strokeWidth: 3,
+                    strokeColor: Colors.white,
                   );
-                }).toList(),
-            isCurved: true,
-            color: Colors.blue,
-            barWidth: 3,
-            dotData: FlDotData(show: false),
+                }
+                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+              },
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              color: Colors.green.withOpacity(0.1),
+            ),
           ),
         ],
+        minY: 20,
+        maxY: 35,
       ),
     );
   }
 
-  Widget _buildPHTDSChart() {
+  Widget _buildHumidityChart() {
     return LineChart(
       LineChartData(
-        gridData: FlGridData(show: false),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 10,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+          },
+        ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 35,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()}%',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+            ),
+          ),
           rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
@@ -669,7 +812,10 @@ class _StatisticPageState extends State<StatisticPage> {
                 if (index >= 0 && index < _weeklyData.length) {
                   return Text(
                     _weeklyData[index]['day'],
-                    style: GoogleFonts.poppins(fontSize: 10),
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
                   );
                 }
                 return const Text('');
@@ -684,38 +830,65 @@ class _StatisticPageState extends State<StatisticPage> {
                 _weeklyData.asMap().entries.map((entry) {
                   return FlSpot(
                     entry.key.toDouble(),
-                    (entry.value['ph'] as num).toDouble() * 10,
+                    (entry.value['humidity'] as num).toDouble(),
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.purple,
+            color: Colors.blue,
             barWidth: 3,
-            dotData: FlDotData(show: false),
-          ),
-          LineChartBarData(
-            spots:
-                _weeklyData.asMap().entries.map((entry) {
-                  return FlSpot(
-                    entry.key.toDouble(),
-                    (entry.value['tds'] as num).toDouble() / 10,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                if (index == _weeklyData.length - 1) {
+                  return FlDotCirclePainter(
+                    radius: 6,
+                    color: Colors.blue,
+                    strokeWidth: 3,
+                    strokeColor: Colors.white,
                   );
-                }).toList(),
-            isCurved: true,
-            color: Colors.teal,
-            barWidth: 3,
-            dotData: FlDotData(show: false),
+                }
+                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+              },
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              color: Colors.blue.withOpacity(0.1),
+            ),
           ),
         ],
+        minY: 60,
+        maxY: 85,
       ),
     );
   }
 
-  Widget _buildWaterLevelChart() {
+  Widget _buildPHChart() {
     return LineChart(
       LineChartData(
-        gridData: FlGridData(show: false),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 0.5,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+          },
+        ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 35,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toStringAsFixed(1)}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+            ),
+          ),
           rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
@@ -726,7 +899,184 @@ class _StatisticPageState extends State<StatisticPage> {
                 if (index >= 0 && index < _weeklyData.length) {
                   return Text(
                     _weeklyData[index]['day'],
-                    style: GoogleFonts.poppins(fontSize: 10),
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
+                  );
+                }
+                return const Text('');
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots:
+                _weeklyData.asMap().entries.map((entry) {
+                  return FlSpot(
+                    entry.key.toDouble(),
+                    (entry.value['ph'] as num).toDouble(),
+                  );
+                }).toList(),
+            isCurved: true,
+            color: Colors.purple,
+            barWidth: 3,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                if (index == _weeklyData.length - 1) {
+                  return FlDotCirclePainter(
+                    radius: 6,
+                    color: Colors.purple,
+                    strokeWidth: 3,
+                    strokeColor: Colors.white,
+                  );
+                }
+                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+              },
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              color: Colors.purple.withOpacity(0.1),
+            ),
+          ),
+        ],
+        minY: 5.5,
+        maxY: 7.0,
+      ),
+    );
+  }
+
+  Widget _buildTDSChart() {
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 50,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+          },
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 35,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+            ),
+          ),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                int index = value.toInt();
+                if (index >= 0 && index < _weeklyData.length) {
+                  return Text(
+                    _weeklyData[index]['day'],
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
+                  );
+                }
+                return const Text('');
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots:
+                _weeklyData.asMap().entries.map((entry) {
+                  return FlSpot(
+                    entry.key.toDouble(),
+                    (entry.value['tds'] as num).toDouble(),
+                  );
+                }).toList(),
+            isCurved: true,
+            color: Colors.teal,
+            barWidth: 3,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                if (index == _weeklyData.length - 1) {
+                  return FlDotCirclePainter(
+                    radius: 6,
+                    color: Colors.teal,
+                    strokeWidth: 3,
+                    strokeColor: Colors.white,
+                  );
+                }
+                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+              },
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              color: Colors.teal.withOpacity(0.1),
+            ),
+          ),
+        ],
+        minY: 800,
+        maxY: 950,
+      ),
+    );
+  }
+
+  Widget _buildWaterLevelChart() {
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 10,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+          },
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 35,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()}%',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+            ),
+          ),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                int index = value.toInt();
+                if (index >= 0 && index < _weeklyData.length) {
+                  return Text(
+                    _weeklyData[index]['day'],
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
                   );
                 }
                 return const Text('');
@@ -747,13 +1097,28 @@ class _StatisticPageState extends State<StatisticPage> {
             isCurved: true,
             color: Colors.indigo,
             barWidth: 3,
-            dotData: FlDotData(show: false),
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                if (index == _weeklyData.length - 1) {
+                  return FlDotCirclePainter(
+                    radius: 6,
+                    color: Colors.indigo,
+                    strokeWidth: 3,
+                    strokeColor: Colors.white,
+                  );
+                }
+                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+              },
+            ),
             belowBarData: BarAreaData(
               show: true,
               color: Colors.indigo.withOpacity(0.1),
             ),
           ),
         ],
+        minY: 70,
+        maxY: 95,
       ),
     );
   }
@@ -852,6 +1217,17 @@ class _StatisticPageState extends State<StatisticPage> {
                     );
                   },
                   isActive: true,
+                ),
+                _buildDrawerItem(
+                  icon: Icons.assignment_outlined,
+                  title: 'Edukasi',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => EducationPage()),
+                    );
+                  },
                 ),
                 _buildDrawerItem(
                   icon: Icons.logout,

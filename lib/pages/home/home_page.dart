@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/about_us/about_us_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
+import 'package:sistem_monitoring_kontrol/pages/education/education_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/notification/notification_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
@@ -18,7 +19,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool isSwitched = false;
   int _currentIndex = 0; // Track current tab index
+  double _pumpSpeed =
+      65.0; // Variable untuk menyimpan nilai speed pompa (0-100)
 
   // Handle bottom navigation bar tap
   void _onBottomNavTap(int index) {
@@ -175,8 +179,12 @@ class _HomePageState extends State<HomePage> {
                       Transform.scale(
                         scale: 0.8,
                         child: Switch(
-                          value: true,
-                          onChanged: (_) {},
+                          value: isSwitched,
+                          onChanged: (value) {
+                            setState(() {
+                              isSwitched = value;
+                            });
+                          },
                           activeColor: Colors.white,
                           activeTrackColor: Colors.green,
                           materialTapTargetSize:
@@ -207,12 +215,193 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Pump Speed Control - TAMBAHAN BARU
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header dengan icon dan label
+                          Row(
+                            children: [
+                              Container(
+                                width: 35,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.10),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.speed,
+                                  color: Colors.blue,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Control Kecepatan Pompa',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${_pumpSpeed.round()}%',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Status indicator
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      _pumpSpeed > 0
+                                          ? Colors.green.withOpacity(0.1)
+                                          : Colors.grey.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            _pumpSpeed > 0
+                                                ? Colors.green
+                                                : Colors.grey,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _pumpSpeed > 0 ? 'Aktif' : 'Mati',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 10,
+                                        color:
+                                            _pumpSpeed > 0
+                                                ? Colors.green
+                                                : Colors.grey,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Custom Slider
+                          Column(
+                            children: [
+                              // Speed labels
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Lambat',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 10,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                  Text(
+                                    'Cepat',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 10,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Slider
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 6,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 12,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 20,
+                                  ),
+                                  activeTrackColor: Colors.green,
+                                  inactiveTrackColor: Colors.grey[300],
+                                  thumbColor: Colors.white,
+                                  overlayColor: Colors.lightGreen.withOpacity(
+                                    0.2,
+                                  ),
+                                  valueIndicatorShape:
+                                      const PaddleSliderValueIndicatorShape(),
+                                  valueIndicatorColor: Colors.blue,
+                                  valueIndicatorTextStyle: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                child: Slider(
+                                  value: _pumpSpeed,
+                                  min: 0,
+                                  max: 100,
+                                  divisions: 20,
+                                  label: '${_pumpSpeed.round()}%',
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _pumpSpeed = value;
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // Speed indicator text
+                              Text(
+                                _getSpeedText(_pumpSpeed),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
                     // Icon and Value Row
                     Row(
                       children: [
                         Container(
-                          width: 48,
-                          height: 48,
+                          width: 40,
+                          height: 40,
                           decoration: BoxDecoration(
                             color: Colors.green.withOpacity(0.1),
                             shape: BoxShape.circle,
@@ -220,14 +409,14 @@ class _HomePageState extends State<HomePage> {
                           child: const Icon(
                             Icons.water_drop,
                             color: Colors.green,
-                            size: 24,
+                            size: 20,
                           ),
                         ),
                         const SizedBox(width: 16),
                         Text(
                           '750 ppm',
                           style: GoogleFonts.poppins(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
                             letterSpacing: -0.5,
@@ -245,7 +434,7 @@ class _HomePageState extends State<HomePage> {
                         Text(
                           'Level Nutrisi',
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 11,
                             color: Colors.grey[600],
                             fontWeight: FontWeight.w500,
                           ),
@@ -253,7 +442,7 @@ class _HomePageState extends State<HomePage> {
                         Text(
                           '75%',
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: Colors.orange,
                           ),
@@ -685,6 +874,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Helper method untuk mendapatkan text kecepatan
+  String _getSpeedText(double speed) {
+    if (speed == 0) return 'Pompa tidak aktif';
+    if (speed <= 25) return 'Kecepatan sangat lambat';
+    if (speed <= 50) return 'Kecepatan lambat';
+    if (speed <= 75) return 'Kecepatan sedang';
+    return 'Kecepatan tinggi';
+  }
+
   // Build Drawer Menu
   Widget _buildDrawer() {
     return Drawer(
@@ -780,6 +978,17 @@ class _HomePageState extends State<HomePage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => StatisticPage()),
+                    );
+                  },
+                ),
+                _buildDrawerItem(
+                  icon: Icons.assignment_outlined,
+                  title: 'Edukasi',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => EducationPage()),
                     );
                   },
                 ),

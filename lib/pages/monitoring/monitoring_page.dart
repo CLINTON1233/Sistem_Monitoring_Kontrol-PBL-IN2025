@@ -299,12 +299,12 @@ class _MonitoringPageState extends State<MonitoringPage> {
                           lineBarsData: [
                             LineChartBarData(
                               spots: const [
-                                FlSpot(0, 720),
+                                FlSpot(0, 620),
                                 FlSpot(1, 780),
-                                FlSpot(2, 750),
-                                FlSpot(3, 680),
-                                FlSpot(4, 720),
-                                FlSpot(5, 750),
+                                FlSpot(2, 450),
+                                FlSpot(3, 1000),
+                                FlSpot(4, 900),
+                                FlSpot(5, 90),
                               ],
                               isCurved: true,
                               gradient: const LinearGradient(
@@ -570,12 +570,12 @@ class _MonitoringPageState extends State<MonitoringPage> {
                           lineBarsData: [
                             LineChartBarData(
                               spots: const [
-                                FlSpot(0, 6.2),
-                                FlSpot(1, 6.8),
+                                FlSpot(0, 3.2),
+                                FlSpot(1, 2.8),
                                 FlSpot(2, 6.5),
-                                FlSpot(3, 6.0),
-                                FlSpot(4, 6.3),
-                                FlSpot(5, 6.5),
+                                FlSpot(3, 5.0),
+                                FlSpot(4, 2.3),
+                                FlSpot(5, 3.5),
                               ],
                               isCurved: true,
                               gradient: const LinearGradient(
@@ -668,7 +668,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                     children: [
                       Expanded(
                         child: _buildStatCard(
-                          Icons.science_outlined,
+                          Icons.blur_circular,
                           'pH',
                           '6.2',
                           '',
