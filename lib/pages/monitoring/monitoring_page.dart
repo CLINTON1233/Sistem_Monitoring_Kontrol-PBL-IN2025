@@ -52,15 +52,10 @@ class _MonitoringPageState extends State<MonitoringPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
           onPressed: () {
-            // Perbaikan: Check apakah bisa pop, jika tidak navigate ke HomePage
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => HomePage()),
-              );
-            }
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => HomePage()),
+            );
           },
         ),
         title: Text(
@@ -118,11 +113,6 @@ class _MonitoringPageState extends State<MonitoringPage> {
                             color: Colors.black87,
                           ),
                         ),
-                        Icon(
-                          Icons.more_horiz,
-                          color: Colors.grey[400],
-                          size: 20,
-                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -150,7 +140,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                width: 6,
+                                width: 4,
                                 height: 6,
                                 decoration: const BoxDecoration(
                                   color: Colors.green,
@@ -161,7 +151,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                               Text(
                                 'Live',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 12,
+                                  fontSize: 10,
                                   color: Colors.green,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -173,7 +163,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                     ),
                     const SizedBox(height: 24),
                     SizedBox(
-                      height: 160,
+                      height: 140,
                       child: LineChart(
                         LineChartData(
                           gridData: FlGridData(
@@ -389,11 +379,6 @@ class _MonitoringPageState extends State<MonitoringPage> {
                             color: Colors.black87,
                           ),
                         ),
-                        Icon(
-                          Icons.more_horiz,
-                          color: Colors.grey[400],
-                          size: 20,
-                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -432,7 +417,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                               Text(
                                 'Live',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 12,
+                                  fontSize: 10,
                                   color: Colors.green,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -444,7 +429,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                     ),
                     const SizedBox(height: 24),
                     SizedBox(
-                      height: 160,
+                      height: 140,
                       child: LineChart(
                         LineChartData(
                           gridData: FlGridData(
@@ -799,7 +784,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                 ),
                 child: Icon(icon, size: 20, color: iconColor),
               ),
-              Icon(Icons.trending_up, size: 16, color: Colors.green.shade600),
+              Icon(Icons.trending_up, size: 14, color: Colors.green.shade600),
             ],
           ),
           const SizedBox(height: 16),
@@ -809,7 +794,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
             text: TextSpan(
               text: value,
               style: GoogleFonts.poppins(
-                fontSize: 24,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: Colors.black87,
                 height: 1.0,
@@ -819,7 +804,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                   TextSpan(
                     text: unit,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Colors.black54,
                     ),
@@ -838,7 +823,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
               Text(
                 label,
                 style: GoogleFonts.poppins(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: Colors.black54,
                   fontWeight: FontWeight.w500,
                 ),

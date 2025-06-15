@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
+import 'package:sistem_monitoring_kontrol/services/firestore_guide_services.dart';
+import 'package:sistem_monitoring_kontrol/pages/guide/guide_detail_page.dart';
 
 class GuidePage extends StatefulWidget {
   const GuidePage({super.key});
@@ -13,6 +15,50 @@ class GuidePage extends StatefulWidget {
 
 class _GuidePageState extends State<GuidePage> {
   int _currentIndex = 2;
+  final FirestoreGuideService _guideService = FirestoreGuideService();
+  List<Map<String, dynamic>> _guides = [];
+  bool _isLoading = true;
+  String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAndLoadGuides();
+  }
+
+  Future<void> _initializeAndLoadGuides() async {
+    try {
+      // Inisialisasi data panduan (hanya dijalankan sekali)
+      await _guideService.initializeGuideData();
+      // Load data panduan
+      await _loadGuides();
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Gagal memuat data: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadGuides() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+
+      final guides = await _guideService.getGuideData();
+      setState(() {
+        _guides = guides;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Gagal memuat panduan: $e';
+        _isLoading = false;
+      });
+    }
+  }
 
   void _onBottomNavTap(int index) {
     if (index == _currentIndex) return;
@@ -51,14 +97,10 @@ class _GuidePageState extends State<GuidePage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
           onPressed: () {
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => HomePage()),
-              );
-            }
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => HomePage()),
+            );
           },
         ),
         title: Text(
@@ -70,77 +112,14 @@ class _GuidePageState extends State<GuidePage> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _loadGuides,
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Guide Card 1 - Panduan Pengelolaan Tanaman
-            _buildGuideCard(
-              title: 'Panduan Pengelolaan Tanaman',
-              subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/project.jpg',
-              onTap: () {
-                // Navigate to plant management guide dengan gambar
-                _showGuideDetail(
-                  context,
-                  'Panduan Pengelolaan Tanaman',
-                  _getPlantManagementContent(),
-                  'assets/project.jpg', // Tambahkan parameter gambar
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Guide Card 2 - Panduan Pemberian Nutrisi Tanaman Hidroponik
-            _buildGuideCard(
-              title: 'Panduan Pemberian Nutrisi Tanaman Hidroponik',
-              subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/jeje.jpg',
-              onTap: () {
-                // Navigate to nutrition guide dengan gambar
-                _showGuideDetail(
-                  context,
-                  'Panduan Pemberian Nutrisi Tanaman Hidroponik',
-                  _getNutritionGuideContent(),
-                  'assets/jeje.jpg', // Tambahkan parameter gambar
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Additional Guide Cards
-            _buildGuideCard(
-              title: 'Panduan Monitoring Sistem',
-              subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/greenhouse.jpg',
-              onTap: () {
-                _showGuideDetail(
-                  context,
-                  'Panduan Monitoring Sistem',
-                  _getMonitoringGuideContent(),
-                  'assets/greenhouse.jpg', // Tambahkan parameter gambar
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-
-            _buildGuideCard(
-              title: 'Panduan Troubleshooting',
-              subtitle: 'Pelajari Selengkapnya',
-              image: 'assets/pbl.jpg',
-              onTap: () {
-                _showGuideDetail(
-                  context,
-                  'Panduan Troubleshooting',
-                  _getTroubleshootingContent(),
-                  'assets/pbl.jpg', // Tambahkan parameter gambar
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+      body: _buildBody(),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -187,6 +166,123 @@ class _GuidePageState extends State<GuidePage> {
               label: 'Profile',
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4B715A)),
+        ),
+      );
+    }
+
+    if (_errorMessage.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text(
+              'Terjadi Kesalahan',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.red[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                _errorMessage,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _loadGuides,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4B715A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Coba Lagi',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_guides.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.assignment_outlined, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Belum Ada Panduan',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Data panduan akan segera tersedia',
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadGuides,
+      color: const Color(0xFF4B715A),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children:
+              _guides
+                  .map(
+                    (guide) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: _buildGuideCard(
+                        title: guide['title'] ?? 'Judul Tidak Tersedia',
+                        subtitle: guide['subtitle'] ?? 'Pelajari Selengkapnya',
+                        image: guide['image'] ?? 'assets/default.jpg',
+                        onTap:
+                            () => _showGuideDetail(
+                              context,
+                              guide['title'] ?? 'Judul Tidak Tersedia',
+                              guide['content'] ?? 'Konten tidak tersedia',
+                              guide['image'] ?? 'assets/default.jpg',
+                            ),
+                      ),
+                    ),
+                  )
+                  .toList(),
         ),
       ),
     );
@@ -263,7 +359,6 @@ class _GuidePageState extends State<GuidePage> {
                 width: double.infinity,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
-                  // Fallback jika gambar tidak ditemukan
                   return Container(
                     height: 200,
                     color: const Color(0xFFF0F4F0),
@@ -361,7 +456,6 @@ class _GuidePageState extends State<GuidePage> {
     );
   }
 
-  // Modifikasi method ini untuk menerima parameter gambar
   void _showGuideDetail(
     BuildContext context,
     String title,
@@ -375,290 +469,8 @@ class _GuidePageState extends State<GuidePage> {
             (context) => GuideDetailPage(
               title: title,
               content: content,
-              imagePath: imagePath, // Tambahkan parameter gambar
+              imagePath: imagePath,
             ),
-      ),
-    );
-  }
-
-  String _getPlantManagementContent() {
-    return '''
-Panduan Lengkap Pengelolaan Tanaman Hidroponik
-
-1. Persiapan Sistem
-• Pastikan sistem hidroponik bersih dan steril
-• Periksa semua komponen sistem (pompa, selang, dll)
-• Siapkan larutan nutrisi dengan konsentrasi yang tepat
-
-2. Penanaman
-• Pilih bibit yang sehat dan berkualitas
-• Gunakan media tanam yang sesuai (rockwool, perlite, dll)
-• Tempatkan bibit dengan hati-hati pada sistem
-
-3. Perawatan Harian
-• Monitor pH dan EC larutan nutrisi
-• Periksa kondisi tanaman secara visual
-• Pastikan sistem sirkulasi berjalan dengan baik
-
-4. Pemeliharaan Berkala
-• Ganti larutan nutrisi setiap 1-2 minggu
-• Bersihkan sistem secara berkala
-• Pangkas daun yang layu atau rusak
-
-5. Pemanenan
-• Panen saat tanaman mencapai ukuran optimal
-• Gunakan alat yang bersih untuk memotong
-• Simpan hasil panen dengan cara yang tepat
-    ''';
-  }
-
-  String _getNutritionGuideContent() {
-    return '''
-Panduan Pemberian Nutrisi Tanaman Hidroponik
-
-1. Jenis Nutrisi
-• Nutrisi makro: NPK (Nitrogen, Fosfor, Kalium)
-• Nutrisi mikro: Fe, Mn, Zn, Cu, B, Mo
-• Nutrisi tambahan sesuai jenis tanaman
-
-2. Konsentrasi Nutrisi
-• EC (Electrical Conductivity): 1.2-2.0 mS/cm
-• pH: 5.5-6.5 untuk sebagian besar tanaman
-• Sesuaikan dengan fase pertumbuhan tanaman
-
-3. Pengaturan pH
-• Gunakan pH meter untuk pengukuran akurat
-• pH turun: tambahkan KOH atau Ca(OH)2
-• pH naik: tambahkan asam sitrat atau H3PO4
-
-4. Jadwal Pemberian
-• Nutrisi diberikan secara kontinyu melalui sistem
-• Ganti larutan nutrisi setiap 7-14 hari
-• Monitor dan adjust konsentrasi setiap hari
-
-5. Tanda Kekurangan Nutrisi
-• Daun menguning: kekurangan nitrogen
-• Pertumbuhan lambat: kekurangan fosfor
-• Tepi daun coklat: kekurangan kalium
-    ''';
-  }
-
-  String _getMonitoringGuideContent() {
-    return '''
-Panduan Monitoring Sistem Hidroponik
-
-1. Parameter yang Dipantau
-• Suhu air dan lingkungan
-• pH dan EC larutan nutrisi
-• Tingkat air dalam reservoir
-• Kondisi pompa dan sistem sirkulasi
-
-2. Frekuensi Monitoring
-• Harian: pH, EC, suhu, kondisi visual tanaman
-• Mingguan: pembersihan sistem, ganti larutan
-• Bulanan: kalibrasi sensor, perawatan peralatan
-
-3. Tools Monitoring
-• pH meter dan EC meter
-• Termometer digital
-• Sensor otomatis (jika tersedia)
-• Log book untuk pencatatan
-
-4. Troubleshooting
-• pH tidak stabil: periksa buffer dan kalibrasi
-• EC terlalu tinggi/rendah: adjust konsentrasi nutrisi
-• Suhu tidak optimal: gunakan heater/chiller
-
-5. Pencatatan Data
-• Catat semua parameter harian
-• Buat grafik trend untuk analisis
-• Simpan data untuk referensi masa depan
-    ''';
-  }
-
-  String _getTroubleshootingContent() {
-    return '''
-Panduan Troubleshooting Sistem Hidroponik
-
-1. Masalah Pompa
-• Pompa tidak menyala: periksa power dan fuse
-• Aliran lemah: bersihkan filter dan impeller
-• Suara berisik: periksa bearing dan mounting
-
-2. Masalah Nutrisi
-• pH tidak stabil: ganti probe, kalibrasi ulang
-• EC berfluktuasi: periksa kebersihan probe
-• Endapan pada reservoir: bersihkan dan ganti larutan
-
-3. Masalah Tanaman
-• Daun layu: periksa akar dan sistem air
-• Pertumbuhan lambat: cek nutrisi dan pencahayaan
-• Hama dan penyakit: isolasi dan treatment
-
-4. Masalah Listrik
-• Sensor error: restart sistem, cek koneksi
-• Display tidak normal: periksa power supply
-• Alarm berbunyi: identifikasi penyebab dari kode error
-
-5. Pencegahan
-• Maintenance rutin sesuai jadwal
-• Gunakan komponen berkualitas
-• Backup power untuk sistem kritikal
-• Training operator yang adequate
-    ''';
-  }
-}
-
-// Halaman detail panduan - DIMODIFIKASI untuk menampilkan gambar
-class GuideDetailPage extends StatelessWidget {
-  final String title;
-  final String content;
-  final String imagePath; // Tambahkan parameter gambar
-
-  const GuideDetailPage({
-    super.key,
-    required this.title,
-    required this.content,
-    required this.imagePath, // Wajib ada gambar
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF4B715A),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          title,
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Gambar di bagian atas detail
-              Container(
-                height: 200,
-                width: double.infinity,
-                margin: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE0E0E0)),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    imagePath,
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      // Fallback jika gambar tidak ditemukan
-                      return Container(
-                        height: 200,
-                        color: const Color(0xFFF0F4F0),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.eco_outlined,
-                                size: 48,
-                                color: const Color(0xFF4B715A),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Gambar tidak ditemukan',
-                                style: GoogleFonts.poppins(
-                                  color: const Color(0xFF4B715A),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-              // Badge
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4CAF50),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'PANDUAN LENGKAP',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Konten text
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(
-                  content,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    height: 1.6,
-                    color: const Color(0xFF2E2E2E),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

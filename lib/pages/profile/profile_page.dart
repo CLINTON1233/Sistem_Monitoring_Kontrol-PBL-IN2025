@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -12,6 +14,10 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirestoreService _firestoreService = FirestoreService();
+  User? _currentUser;
+  bool _isLoading = false;
   int _currentIndex = 3;
 
   // Controllers untuk form
@@ -28,9 +34,55 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // Set nilai default (opsional)
-    _usernameController.text = "Jelita Agnesia";
-    _emailController.text = "jelitaagnesia@gmail.com";
+    _currentUser = _auth.currentUser;
+    _loadUserData(); // Load data dari Firebase
+  }
+
+  void _showSnackBar(String message, {bool isSuccess = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _loadUserData() async {
+    if (_currentUser != null) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        Map<String, dynamic>? userData = await _firestoreService.getUserData(
+          _currentUser!.uid,
+        );
+        if (userData != null) {
+          _usernameController.text = userData['username'] ?? '';
+          _emailController.text =
+              userData['email'] ?? _currentUser!.email ?? '';
+        } else {
+          _emailController.text = _currentUser!.email ?? '';
+        }
+      } catch (e) {
+        _showSnackBar('Gagal memuat data: $e'); // Error = merah
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -69,36 +121,111 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  void _saveProfile() {
-    // Validasi password match
-    if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Password dan konfirmasi password tidak cocok'),
-          backgroundColor: Colors.red,
-        ),
-      );
+  Future<void> _saveProfile() async {
+    if (_currentUser == null) {
+      _showSnackBar('User tidak ditemukan'); // Error = merah
       return;
     }
 
     // Validasi form tidak kosong
     if (_usernameController.text.isEmpty || _emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Username dan Email harus diisi'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Username dan Email harus diisi'); // Error = merah
       return;
     }
 
-    // Simpan data (implementasi sesuai kebutuhan)
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Profil berhasil disimpan'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    // Validasi password jika diisi
+    if (_passwordController.text.isNotEmpty) {
+      if (_passwordController.text != _confirmPasswordController.text) {
+        _showSnackBar(
+          'Password dan konfirmasi password tidak cocok',
+        ); // Error = merah
+        return;
+      }
+
+      if (_passwordController.text.length < 6) {
+        _showSnackBar('Password minimal 6 karakter'); // Error = merah
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // ... kode lainnya ...
+
+      // Cek username sudah digunakan
+      bool usernameExists = await _firestoreService.isUsernameExists(
+        _usernameController.text,
+      );
+      if (usernameExists) {
+        Map<String, dynamic>? currentUserData = await _firestoreService
+            .getUserData(_currentUser!.uid);
+        if (currentUserData == null ||
+            currentUserData['username'] != _usernameController.text) {
+          _showSnackBar('Username sudah digunakan'); // Error = merah
+          setState(() {
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      // Update email di Firebase Auth jika berubah
+      if (_emailController.text != _currentUser!.email) {
+        await _currentUser!.updateEmail(_emailController.text);
+      }
+
+      // Update password jika diisi
+      if (_passwordController.text.isNotEmpty) {
+        await _currentUser!.updatePassword(_passwordController.text);
+      }
+
+      // Update data di Firestore
+      await _firestoreService.updateUserData(
+        userId: _currentUser!.uid,
+        data: {
+          'username': _usernameController.text,
+          'email': _emailController.text,
+        },
+      );
+
+      // Clear password fields setelah berhasil
+      _passwordController.clear();
+      _confirmPasswordController.clear();
+
+      _showSnackBar(
+        'Profil berhasil disimpan',
+        isSuccess: true,
+      ); // Success = hijau
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'requires-recent-login':
+          errorMessage = 'Silakan login ulang untuk mengubah email/password';
+          break;
+        case 'email-already-in-use':
+          errorMessage = 'Email sudah digunakan akun lain';
+          break;
+        case 'invalid-email':
+          errorMessage = 'Format email tidak valid';
+          break;
+        case 'weak-password':
+          errorMessage = 'Password terlalu lemah';
+          break;
+        default:
+          errorMessage = 'Terjadi kesalahan: ${e.message}';
+      }
+
+      _showSnackBar(errorMessage); // Error = merah
+    } catch (e) {
+      _showSnackBar('Gagal menyimpan profil: $e'); // Error = merah
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Widget _buildTextField({
@@ -186,15 +313,10 @@ class _ProfilePageState extends State<ProfilePage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
           onPressed: () {
-            // Perbaikan: Check apakah bisa pop, jika tidak navigate ke HomePage
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => HomePage()),
-              );
-            }
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => HomePage()),
+            );
           },
         ),
         title: Text(
@@ -207,109 +329,132 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          children: [
-            // Profile Picture Section
-            const SizedBox(height: 5),
-            Stack(
-              children: [
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.grey[200],
-                  ),
-                  child: Icon(Icons.person, size: 60, color: Colors.grey[600]),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    width: 36,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF4B715A),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 3),
+      body:
+          _isLoading
+              ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF4B715A)),
+              )
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(30),
+                child: Column(
+                  children: [
+                    // Profile Picture Section tetap sama
+                    const SizedBox(height: 5),
+                    Stack(
+                      children: [
+                        Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.grey[200],
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 36,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4B715A),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: 18,
+                    const SizedBox(height: 24),
+
+                    // Form Fields tetap sama
+                    _buildTextField(
+                      label: 'Username',
+                      controller: _usernameController,
                     ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
+                    const SizedBox(height: 15),
 
-            // Form Fields
-            _buildTextField(label: 'Username', controller: _usernameController),
-            const SizedBox(height: 15),
+                    _buildTextField(
+                      label: 'Email',
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 15),
 
-            _buildTextField(
-              label: 'Email',
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 15),
+                    _buildTextField(
+                      label: 'Kata Sandi',
+                      controller: _passwordController,
+                      isPassword: true,
+                      isPasswordVisible: _isPasswordVisible,
+                      onTogglePassword: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 15),
 
-            _buildTextField(
-              label: 'Kata Sandi',
-              controller: _passwordController,
-              isPassword: true,
-              isPasswordVisible: _isPasswordVisible,
-              onTogglePassword: () {
-                setState(() {
-                  _isPasswordVisible = !_isPasswordVisible;
-                });
-              },
-            ),
-            const SizedBox(height: 15),
+                    _buildTextField(
+                      label: 'Konfirmasi Kata Sandi',
+                      controller: _confirmPasswordController,
+                      isPassword: true,
+                      isPasswordVisible: _isConfirmPasswordVisible,
+                      onTogglePassword: () {
+                        setState(() {
+                          _isConfirmPasswordVisible =
+                              !_isConfirmPasswordVisible;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 20),
 
-            _buildTextField(
-              label: 'Konfirmasi Kata Sandi',
-              controller: _confirmPasswordController,
-              isPassword: true,
-              isPasswordVisible: _isConfirmPasswordVisible,
-              onTogglePassword: () {
-                setState(() {
-                  _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
-                });
-              },
-            ),
-            const SizedBox(height: 20),
-
-            // Save Button
-            SizedBox(
-              width: 145,
-              height: 45,
-              child: ElevatedButton(
-                onPressed: _saveProfile,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4B715A),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 0,
-                ),
-                child: Text(
-                  'Simpan',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+                    // Save Button dengan loading state
+                    SizedBox(
+                      width: 145,
+                      height: 45,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _saveProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4B715A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
+                        child:
+                            _isLoading
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : Text(
+                                  'Simpan',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 5),
-          ],
-        ),
-      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,

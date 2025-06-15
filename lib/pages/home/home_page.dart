@@ -9,6 +9,10 @@ import 'package:sistem_monitoring_kontrol/pages/notification/notification_page.d
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/statistic/statistic_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
+import 'package:sistem_monitoring_kontrol/services/weather_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,12 +23,181 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  bool isSwitched = false;
-  int _currentIndex = 0; // Track current tab index
-  double _pumpSpeed =
-      65.0; // Variable untuk menyimpan nilai speed pompa (0-100)
 
-  // Handle bottom navigation bar tap
+  String _currentLocation = 'Batam, Indonesia';
+  double _currentTemperature = 28.0;
+  String _weatherDescription = 'Cerah';
+  bool _isLoadingWeather = true;
+
+  final FirestoreService _firestoreService =
+      FirestoreService(); // Tambahkan ini
+
+  bool isSwitched = false;
+  int _currentIndex = 0;
+  double _pumpSpeed = 65.0;
+
+  // Variabel untuk menyimpan data user session
+  String _username = 'Loading...';
+  String _email = 'Loading...';
+  String _currentDate = '';
+  String _currentDay = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    _setCurrentDate();
+    _loadLocationAndWeather();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        // Ambil data dari Firestore
+        Map<String, dynamic>? userData = await _firestoreService.getUserData(
+          currentUser.uid,
+        );
+
+        if (userData != null) {
+          setState(() {
+            _username = userData['username'] ?? 'User';
+            _email = userData['email'] ?? currentUser.email ?? 'No Email';
+          });
+        } else {
+          // Fallback jika data tidak ada di Firestore
+          setState(() {
+            _username = currentUser.displayName ?? 'User';
+            _email = currentUser.email ?? 'No Email';
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      // Set default values jika terjadi error
+      setState(() {
+        _username = 'User';
+        _email = 'No Email';
+      });
+    }
+  }
+
+  void _setCurrentDate() {
+    DateTime now = DateTime.now();
+    List<String> days = [
+      'Minggu',
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+    ];
+    List<String> months = [
+      '',
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+
+    setState(() {
+      _currentDay = days[now.weekday % 7];
+      _currentDate =
+          '${_currentDay}, ${now.day} ${months[now.month]} ${now.year}';
+    });
+  }
+
+  Future<void> _loadLocationAndWeather() async {
+    setState(() {
+      _isLoadingWeather = true;
+    });
+
+    try {
+      // Coba dapatkan lokasi saat ini
+      Position? position = await WeatherService.getCurrentPosition();
+
+      if (position != null) {
+        // Dapatkan nama kota dari koordinat
+        String cityName = await WeatherService.getCityName(
+          position.latitude,
+          position.longitude,
+        );
+
+        // Dapatkan data cuaca berdasarkan koordinat
+        Map<String, dynamic> weatherData =
+            await WeatherService.getWeatherByCoordinates(
+              position.latitude,
+              position.longitude,
+            );
+
+        setState(() {
+          _currentLocation = '$cityName, ${weatherData['country']}';
+          _currentTemperature = weatherData['temperature'];
+          _weatherDescription = weatherData['description'];
+          _isLoadingWeather = false;
+        });
+      } else {
+        // Fallback ke Batam jika tidak bisa dapatkan lokasi
+        Map<String, dynamic> weatherData =
+            await WeatherService.getWeatherByCity('Batam');
+
+        setState(() {
+          _currentLocation = 'Batam, Indonesia';
+          _currentTemperature = weatherData['temperature'];
+          _weatherDescription = weatherData['description'];
+          _isLoadingWeather = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading weather: $e');
+      // Set default values jika error
+      setState(() {
+        _currentLocation = 'Batam, Indonesia';
+        _currentTemperature = 28.0;
+        _weatherDescription = 'Cerah';
+        _isLoadingWeather = false;
+      });
+    }
+  }
+
+  Future<void> _refreshWeather() async {
+    await _loadLocationAndWeather();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Cuaca berhasil diperbarui'),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  IconData _getWeatherIcon(String description) {
+    switch (description.toLowerCase()) {
+      case 'cerah':
+        return Icons.wb_sunny;
+      case 'berawan':
+        return Icons.wb_cloudy;
+      case 'hujan':
+      case 'gerimis':
+        return Icons.umbrella;
+      case 'badai':
+        return Icons.flash_on;
+      case 'kabut':
+        return Icons.foggy;
+      default:
+        return Icons.wb_sunny;
+    }
+  }
+
   void _onBottomNavTap(int index) {
     if (index == _currentIndex) return; // Don't navigate if same tab
 
@@ -114,7 +287,7 @@ class _HomePageState extends State<HomePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Hi Jelita Agnesia',
+                          'Hi, $_username',
                           style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -122,7 +295,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         Text(
-                          'Senin, 9 Juni 2025',
+                          _currentDate,
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: Colors.grey[600],
@@ -140,7 +313,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Batam, Indonesia',
+                              _currentLocation,
                               style: GoogleFonts.poppins(
                                 fontSize: 11,
                                 color: Colors.grey[500],
@@ -148,23 +321,38 @@ class _HomePageState extends State<HomePage> {
                             ),
                             const SizedBox(width: 12),
                             Icon(
-                              Icons.wb_sunny,
+                              _getWeatherIcon(_weatherDescription),
                               size: 14,
                               color: Colors.orange[400],
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              '28°C • Cerah',
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                color: Colors.grey[500],
-                              ),
-                            ),
+                            _isLoadingWeather
+                                ? SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.grey[400]!,
+                                    ),
+                                  ),
+                                )
+                                : GestureDetector(
+                                  onTap: _refreshWeather,
+                                  child: Text(
+                                    '${_currentTemperature.round()}°C • $_weatherDescription',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ),
                           ],
                         ),
                       ],
                     ),
                   ),
+
                   const SizedBox(width: 16),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -578,15 +766,15 @@ class _HomePageState extends State<HomePage> {
                         Text(
                           'Suhu dari Waktu Kewaktu',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 12,
                             color: Colors.grey[600],
                           ),
                         ),
-                        Icon(
-                          Icons.more_horiz,
-                          color: Colors.grey[400],
-                          size: 20,
-                        ),
+                        // Icon(
+                        //   Icons.more_horiz,
+                        //   color: Colors.grey[400],
+                        //   size: 20,
+                        // ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -595,7 +783,7 @@ class _HomePageState extends State<HomePage> {
                         Text(
                           '35.2°C',
                           style: GoogleFonts.poppins(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
                           ),
@@ -911,9 +1099,9 @@ class _HomePageState extends State<HomePage> {
                       radius: 25,
                       backgroundColor: Colors.white,
                       child: Text(
-                        'JA',
+                        _getInitials(_username),
                         style: GoogleFonts.poppins(
-                          fontSize: 24,
+                          fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF4B715A),
                         ),
@@ -921,17 +1109,17 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Jelita Agnesia',
+                      _username,
                       style: GoogleFonts.poppins(
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
                     ),
                     Text(
-                      'jelitaagnesia@email.com',
+                      _email,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
@@ -1074,6 +1262,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'U';
+    List<String> names = name.trim().split(' ');
+    if (names.length == 1) {
+      return names[0].substring(0, 1).toUpperCase();
+    } else {
+      return (names[0].substring(0, 1) + names[1].substring(0, 1))
+          .toUpperCase();
+    }
+  }
+
   // Show Logout Dialog
   void _showLogoutDialog() {
     showDialog(
@@ -1115,13 +1314,22 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                _showSnackBar('Logout Berhasil');
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => LoginPage()),
-                );
+
+                try {
+                  // Logout dari Firebase Auth
+                  await FirebaseAuth.instance.signOut();
+                  _showSnackBar('Logout Berhasil');
+
+                  // Navigasi ke login page
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginPage()),
+                  );
+                } catch (e) {
+                  _showSnackBar('Error saat logout: $e');
+                }
               },
             ),
           ],
@@ -1175,7 +1383,7 @@ class _HomePageState extends State<HomePage> {
             text: TextSpan(
               text: value,
               style: GoogleFonts.poppins(
-                fontSize: 24,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: Colors.black87,
                 height: 1.0,
@@ -1185,7 +1393,7 @@ class _HomePageState extends State<HomePage> {
                   TextSpan(
                     text: unit,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Colors.black54,
                     ),
@@ -1199,7 +1407,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 10,
               color: Colors.black54,
               fontWeight: FontWeight.w500,
             ),

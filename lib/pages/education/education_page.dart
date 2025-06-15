@@ -3,10 +3,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/about_us/about_us_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
-import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/statistic/statistic_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sistem_monitoring_kontrol/services/firestore_education_services.dart'
+    as EducationService;
+import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart'
+    as AuthService;
 
 class EducationPage extends StatefulWidget {
   const EducationPage({super.key});
@@ -17,152 +21,115 @@ class EducationPage extends StatefulWidget {
 
 class _EducationPageState extends State<EducationPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  String _username = 'Loading...';
+  String _email = 'Loading...';
+
+  final EducationService.FirestoreService _firestoreService =
+      EducationService.FirestoreService();
   int _currentIndex = 0;
 
-  // Data tanaman hidroponik
-  final List<Map<String, dynamic>> _hydroponicPlants = [
-    {
-      'name': 'Pakcoy (Pak Choi)',
-      'image': 'assets/pakcoy.jpg',
-      'description':
-          'Pakcoy memiliki nilai ekonomis tinggi dan mudah dibudidayakan',
-      'details': '''Pakcoy adalah pilihan menguntungkan untuk hidroponik:
+  List<Map<String, dynamic>> _hydroponicPlants = [];
+  List<Map<String, dynamic>> _filteredPlants = [];
+  bool _isLoading = true;
+  String _searchQuery = '';
 
-• Harga jual yang stabil dan tinggi di pasaran lokal maupun supermarket
-• Pertumbuhan seragam, kompak, dan cocok untuk sistem hidroponik skala kecil maupun besar
-• Relatif tahan terhadap serangan hama seperti ulat dan kutu daun
-• pH larutan nutrisi optimal berada pada kisaran 6.0-6.8
-• Cocok ditanam pada sistem rakit apung (floating raft), NFT, maupun sistem sumbu
+  @override
+  void initState() {
+    super.initState();
+    _initializeData();
+    _loadUserData();
+  }
 
-Tips Implementasi:
-- Pilih varietas yang sesuai dengan kondisi iklim lokal agar hasil maksimal
-- Gunakan media tanam seperti rockwool dan siapkan tray semai
-- Berikan jarak tanam ideal 15x15 cm agar daun tidak saling menutup
-- Nutrisi EC yang dibutuhkan berkisar 1.0-1.5, cocok untuk pemula
-- Panen dilakukan saat tinggi tanaman mencapai 15-20 cm, biasanya dalam 28-40 hari
-- Pastikan sirkulasi udara di area penanaman baik untuk mencegah kelembapan berlebih''',
-      'difficulty': 'Mudah',
-      'harvestTime': '28-40 hari',
-    },
-    {
-      'name': 'Selada (Lettuce)',
-      'image': 'assets/selada2.jpg',
-      'description':
-          'Selada adalah tanaman yang sangat cocok untuk hidroponik pemula',
-      'details':
-          '''Selada merupakan salah satu tanaman terbaik untuk memulai hidroponik karena:
+  Future<void> _loadUserData() async {
+    try {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        // Gunakan AuthService untuk mengambil data user
+        final AuthService.FirestoreService authService =
+            AuthService.FirestoreService();
+        Map<String, dynamic>? userData = await authService.getUserData(
+          currentUser.uid,
+        );
 
-• Pertumbuhan cepat dengan waktu panen sekitar 30-45 hari
-• Tidak membutuhkan nutrisi yang kompleks dan dapat tumbuh dengan baik hanya dengan NPK dasar
-• Tahan terhadap fluktuasi pH di kisaran 6.0-7.0
-• Cocok ditanam pada berbagai sistem hidroponik seperti NFT, DWC, dan wick system
-• Sangat jarang terserang hama jika kebersihan sistem terjaga
+        if (userData != null) {
+          setState(() {
+            _username = userData['username'] ?? 'User';
+            _email = userData['email'] ?? currentUser.email ?? 'No Email';
+          });
+        } else {
+          // Fallback jika data tidak ada di Firestore
+          setState(() {
+            _username = currentUser.displayName ?? 'User';
+            _email = currentUser.email ?? 'No Email';
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      // Set default values jika terjadi error
+      setState(() {
+        _username = 'User';
+        _email = 'No Email';
+      });
+    }
+  }
 
-Tips Implementasi:
-- Gunakan rockwool atau cocopeat sebagai media tanam awal
-- Pindahkan bibit ke sistem utama saat usia sekitar 7-10 hari
-- Berikan pencahayaan alami atau lampu grow light selama 12-14 jam per hari
-- Jaga suhu larutan nutrisi antara 18-22°C untuk hasil terbaik
-- Panen dilakukan sebelum selada berbunga agar rasa tetap renyah dan tidak pahit
-- Cocok untuk sistem hidroponik rumah tangga atau komersial kecil''',
-      'difficulty': 'Mudah',
-      'harvestTime': '30-45 hari',
-    },
-    {
-      'name': 'Sawi Hijau (Bok Choy)',
-      'image': 'assets/sawi.jpg',
-      'description': 'Sawi hijau tumbuh dengan baik dalam sistem hidroponik',
-      'details': '''Sawi hijau sangat populer dalam hidroponik karena:
+  Future<void> _initializeData() async {
+    try {
+      // Inisialisasi data (hanya jalankan sekali)
+      await _firestoreService.initializeEducationData();
 
-• Mudah beradaptasi dengan berbagai sistem hidroponik seperti NFT, Kratky, dan DFT
-• Kebutuhan nutrisi tidak terlalu tinggi sehingga ekonomis untuk dibudidayakan
-• Tahan terhadap suhu panas dan sinar matahari langsung
-• pH optimal untuk pertumbuhan 6.0-6.5
-• Cocok untuk konsumsi harian keluarga atau dijual di pasar lokal
+      // Load data dari Firebase
+      await _loadEducationData();
+    } catch (e) {
+      print('Error initializing data: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
+    }
+  }
 
-Tips Implementasi:
-- Semai benih di media rockwool atau cocopeat selama 7-10 hari
-- Pindahkan ke sistem hidroponik setelah memiliki 3-4 daun sejati
-- Nutrisi EC berkisar antara 1.2-1.8 tergantung fase pertumbuhan
-- Panen dapat dilakukan bertahap mulai dari daun bagian luar
-- Hindari genangan air di area akar untuk mencegah pembusukan
-- Lakukan rotasi tanam secara rutin agar suplai hasil tetap stabil''',
-      'difficulty': 'Mudah',
-      'harvestTime': '25-35 hari',
-    },
-    {
-      'name': 'Bayam (Spinach)',
-      'image': 'assets/bayam.jpg',
-      'description': 'Bayam kaya nutrisi dan mudah tumbuh dalam hidroponik',
-      'details':
-          '''Bayam merupakan sayuran bergizi tinggi yang ideal untuk hidroponik:
+  Future<void> _loadEducationData() async {
+    try {
+      setState(() => _isLoading = true);
 
-• Mengandung zat besi, magnesium, dan vitamin A, C, dan K yang tinggi
-• Cocok untuk konsumsi keluarga atau dijual dalam bentuk segar
-• Dapat dipanen berkali-kali menggunakan metode cut and come again
-• pH larutan optimal antara 6.0-7.0
-• Toleran terhadap pencahayaan rendah dan suhu yang bervariasi
+      List<Map<String, dynamic>> data =
+          await _firestoreService.getEducationData();
 
-Tips Implementasi:
-- Benih dapat disemai langsung pada media tanam akhir
-- Jaga kelembaban tetap stabil terutama pada masa awal pertumbuhan
-- Berikan nutrisi seimbang yang mengandung NPK dan mikronutrien
-- Panen daun muda secara berkala untuk menjaga pertumbuhan optimal
-- Hindari stres air atau kekeringan yang dapat menurunkan kualitas daun
-- Cocok untuk sistem vertikal maupun horizontal skala rumah tangga''',
-      'difficulty': 'Sedang',
-      'harvestTime': '21-30 hari',
-    },
-    {
-      'name': 'Seledri (Celery)',
-      'image': 'assets/seledri.jpg',
-      'description':
-          'Seledri cocok untuk hidroponik meski memerlukan waktu lebih lama untuk tumbuh',
-      'details':
-          '''Seledri merupakan tanaman daun aromatik yang banyak digunakan sebagai bumbu dapur:
+      setState(() {
+        _hydroponicPlants = data;
+        _filteredPlants = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
 
-• Memiliki nilai jual yang tinggi di pasar lokal dan restoran
-• Tahan terhadap penyakit tertentu jika lingkungan bersih
-• Membutuhkan waktu tanam yang panjang dan konsisten dalam perawatan
-• pH optimal antara 5.8-6.5 untuk penyerapan nutrisi maksimal
-• Cocok untuk sistem NFT, rakit apung, dan drip irrigation
-
-Tips Implementasi:
-- Gunakan rockwool untuk semai benih dan pindahkan ke sistem hidroponik setelah 3 minggu
-- Cahaya matahari atau grow light selama 14-16 jam per hari dibutuhkan untuk pertumbuhan maksimal
-- Nutrisi EC ideal sekitar 1.2-1.8, tergantung usia tanaman
-- Jaga kelembaban udara tetap tinggi untuk mencegah pengeringan daun
-- Panen dilakukan setelah 90-120 hari, biasanya saat batang mengeras dan daun tumbuh rimbun
-- Seledri cocok ditanam bersamaan dengan tanaman pelindung untuk meminimalkan stress lingkungan''',
-      'difficulty': 'Sulit',
-      'harvestTime': '90-120 hari',
-    },
-    {
-      'name': 'Tomat (Tomato)',
-      'image': 'assets/tomat.jpg',
-      'description':
-          'Tomat membutuhkan perawatan khusus namun hasilnya sangat menjanjikan',
-      'details':
-          '''Tomat merupakan salah satu komoditas hortikultura dengan permintaan tinggi:
-
-• Potensi hasil panen tinggi jika penyerbukan dan nutrisi dikontrol dengan baik
-• Rentan terhadap serangan hama seperti kutu daun dan jamur, sehingga butuh pengawasan ketat
-• Butuh penyangga atau ajir karena batang dan buah bisa tumbuh besar dan berat
-• pH optimal antara 5.5-6.5 untuk mendukung pertumbuhan akar dan pembungaan
-• Sangat cocok untuk sistem DWC besar atau drip irrigation otomatis
-
-Tips Implementasi:
-- Gunakan varietas tomat cherry atau jenis yang tumbuh pendek (determinate)
-- Tanam pada netpot ukuran besar dengan media tanam seperti hydroton atau perlit
-- Sediakan pencahayaan minimal 12 jam per hari, lebih baik jika ditambah cahaya tambahan
-- Nutrisi EC bervariasi: 2.0 pada awal pertumbuhan, hingga 3.5 saat berbuah
-- Pangkas daun bawah dan batang yang tidak produktif untuk memperbaiki sirkulasi udara
-- Panen dilakukan saat buah berwarna merah merata dan keras, biasanya setelah 75-90 hari
-- Pastikan sistem penyangga kuat untuk menopang beban buah yang lebat''',
-      'difficulty': 'Menengah',
-      'harvestTime': '75-90 hari',
-    },
-  ];
+  void _searchPlants(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isEmpty) {
+        _filteredPlants = _hydroponicPlants;
+      } else {
+        _filteredPlants =
+            _hydroponicPlants
+                .where(
+                  (plant) =>
+                      plant['name'].toLowerCase().contains(
+                        query.toLowerCase(),
+                      ) ||
+                      plant['description'].toLowerCase().contains(
+                        query.toLowerCase(),
+                      ),
+                )
+                .toList();
+      }
+    });
+  }
 
   void _onBottomNavTap(int index) {
     if (index == _currentIndex) return;
@@ -214,21 +181,72 @@ Tips Implementasi:
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.white),
-            onPressed: () {
-              // Implement search functionality
-            },
+        // actions: [
+        //   IconButton(
+        //     icon: const Icon(Icons.search, color: Colors.white),
+        //     onPressed: _loadEducationData,
+        //   ),
+        // ],
+      ),
+      body: Column(
+        children: [
+          // Search Bar
+          // Container(
+          //   padding: const EdgeInsets.all(16),
+          //   child: TextField(
+          //     onChanged: _searchPlants,
+          //     decoration: InputDecoration(
+          //       hintText: 'Cari tanaman hidroponik...',
+          //       prefixIcon: const Icon(Icons.search),
+          //       border: OutlineInputBorder(
+          //         borderRadius: BorderRadius.circular(12),
+          //         borderSide: BorderSide.none,
+          //       ),
+          //       filled: true,
+          //       fillColor: Colors.white,
+          //     ),
+          //   ),
+          // ),
+          // Content
+          Expanded(
+            child:
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _filteredPlants.isEmpty
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'Tidak ada data edukasi'
+                                : 'Tidak ditemukan hasil untuk "$_searchQuery"',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    : RefreshIndicator(
+                      onRefresh: _loadEducationData,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _filteredPlants.length,
+                        itemBuilder: (context, index) {
+                          return _buildPlantCard(_filteredPlants[index]);
+                        },
+                      ),
+                    ),
           ),
         ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children:
-              _hydroponicPlants.map((plant) => _buildPlantCard(plant)).toList(),
-        ),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -332,7 +350,7 @@ Tips Implementasi:
             ),
           ),
 
-          // Plant Image - PERBAIKAN DI SINI
+          // Plant Image
           Container(
             height: 200,
             margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -343,13 +361,11 @@ Tips Implementasi:
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.asset(
-                plant['image'],
+                plant['image'] ?? 'assets/default_plant.jpg',
                 height: 200,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                // Tambahkan error handling yang lebih baik
                 errorBuilder: (context, error, stackTrace) {
-                  print('Error loading image: ${plant['image']} - $error');
                   return Container(
                     height: 200,
                     color: const Color(0xFFF0F4F0),
@@ -364,20 +380,13 @@ Tips Implementasi:
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            plant['name'],
+                            plant['name'] ?? 'Tanaman',
                             style: GoogleFonts.poppins(
                               color: const Color(0xFF4B715A),
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
                             textAlign: TextAlign.center,
-                          ),
-                          Text(
-                            'Gambar tidak ditemukan',
-                            style: GoogleFonts.poppins(
-                              color: Colors.grey[600],
-                              fontSize: 10,
-                            ),
                           ),
                         ],
                       ),
@@ -395,7 +404,7 @@ Tips Implementasi:
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  plant['name'],
+                  plant['name'] ?? 'Tanaman Hidroponik',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -405,7 +414,7 @@ Tips Implementasi:
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  plant['description'],
+                  plant['description'] ?? 'Deskripsi tidak tersedia',
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     color: Colors.grey[600],
@@ -419,14 +428,14 @@ Tips Implementasi:
                 // Tags
                 Row(
                   children: [
-                    _buildTag(plant['difficulty'], Colors.blue),
+                    _buildTag(plant['difficulty'] ?? 'Sedang', Colors.blue),
                     const SizedBox(width: 8),
-                    _buildTag(plant['harvestTime'], Colors.orange),
+                    _buildTag(plant['harvestTime'] ?? '30 hari', Colors.orange),
                   ],
                 ),
                 const SizedBox(height: 12),
 
-                // Baca Selengkapnya Button
+                // Button
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -438,9 +447,7 @@ Tips Implementasi:
                       ),
                     ),
                     GestureDetector(
-                      onTap: () {
-                        _showPlantDetail(plant);
-                      },
+                      onTap: () => _showPlantDetail(plant),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -497,6 +504,17 @@ Tips Implementasi:
         ),
       ),
     );
+  }
+
+  Future<void> initializeAppData() async {
+    try {
+      EducationService.FirestoreService firestoreService =
+          EducationService.FirestoreService();
+      await firestoreService.initializeEducationData();
+      print('App data initialized successfully');
+    } catch (e) {
+      print('Error initializing app data: $e');
+    }
   }
 
   void _showPlantDetail(Map<String, dynamic> plant) {
@@ -628,10 +646,11 @@ Tips Implementasi:
       backgroundColor: Colors.white,
       child: Column(
         children: [
+          // Drawer Header
           Container(
             height: 200,
             width: double.infinity,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -645,13 +664,13 @@ Tips Implementasi:
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 25,
                       backgroundColor: Colors.white,
                       child: Text(
-                        'JA',
-                        style: TextStyle(
-                          fontSize: 24,
+                        _getInitials(_username),
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF4B715A),
                         ),
@@ -659,17 +678,17 @@ Tips Implementasi:
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Jelita Agnesia',
+                      _username,
                       style: GoogleFonts.poppins(
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
                     ),
                     Text(
-                      'jelitaagnesia@email.com',
+                      _email,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
@@ -679,6 +698,7 @@ Tips Implementasi:
             ),
           ),
           const SizedBox(height: 12),
+          // Menu Items
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -700,18 +720,19 @@ Tips Implementasi:
                   title: 'Tentang Kami',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushReplacement(
+                    Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => AboutUsPage()),
                     );
                   },
                 ),
+
                 _buildDrawerItem(
                   icon: Icons.show_chart,
                   title: 'Statistik',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushReplacement(
+                    Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => StatisticPage()),
                     );
@@ -722,6 +743,10 @@ Tips Implementasi:
                   title: 'Edukasi',
                   onTap: () {
                     Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => EducationPage()),
+                    );
                   },
                   isActive: true,
                 ),
@@ -737,6 +762,8 @@ Tips Implementasi:
               ],
             ),
           ),
+
+          // App Version
           Container(
             padding: const EdgeInsets.all(30),
             child: Text(
@@ -749,6 +776,7 @@ Tips Implementasi:
     );
   }
 
+  // Build Drawer Item
   Widget _buildDrawerItem({
     required IconData icon,
     required String title,
@@ -792,6 +820,7 @@ Tips Implementasi:
     );
   }
 
+  // Show SnackBar for demo purposes
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -803,6 +832,18 @@ Tips Implementasi:
     );
   }
 
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'U';
+    List<String> names = name.trim().split(' ');
+    if (names.length == 1) {
+      return names[0].substring(0, 1).toUpperCase();
+    } else {
+      return (names[0].substring(0, 1) + names[1].substring(0, 1))
+          .toUpperCase();
+    }
+  }
+
+  // Show Logout Dialog
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -843,13 +884,22 @@ Tips Implementasi:
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                _showSnackBar('Logout Berhasil');
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => LoginPage()),
-                );
+
+                try {
+                  // Logout dari Firebase Auth
+                  await FirebaseAuth.instance.signOut();
+                  _showSnackBar('Logout Berhasil');
+
+                  // Navigasi ke login page
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginPage()),
+                  );
+                } catch (e) {
+                  _showSnackBar('Error saat logout: $e');
+                }
               },
             ),
           ],

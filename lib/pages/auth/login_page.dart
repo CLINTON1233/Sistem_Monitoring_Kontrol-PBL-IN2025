@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/register_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:flutter/gestures.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -23,6 +24,17 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController passwordController = TextEditingController();
   bool isObscured = true;
 
+  void _showCustomSnackBar(String message, {bool isSuccess = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -36,18 +48,14 @@ class _LoginPageState extends State<LoginPage> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Konten scrollable
             SingleChildScrollView(
               child: Column(
                 children: [
-                  // Gambar Header
                   SizedBox(
                     height: 260,
                     width: double.infinity,
                     child: Image.asset('assets/project.jpg', fit: BoxFit.cover),
                   ),
-
-                  // Konten Form Login
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
@@ -60,13 +68,13 @@ class _LoginPageState extends State<LoginPage> {
                         Text(
                           'Login',
                           style: GoogleFonts.poppins(
-                            fontSize: 30,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 25,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 24),
 
-                        // Input Email
+                        // Email
                         TextFormField(
                           controller: emailController,
                           keyboardType: TextInputType.emailAddress,
@@ -78,7 +86,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Input Password
+                        // Password
                         TextFormField(
                           controller: passwordController,
                           obscureText: isObscured,
@@ -115,11 +123,49 @@ class _LoginPageState extends State<LoginPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            onPressed: () {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(builder: (_) => HomePage()),
-                              );
+                            onPressed: () async {
+                              final email = emailController.text.trim();
+                              final password = passwordController.text.trim();
+
+                              if (email.isEmpty || password.isEmpty) {
+                                _showCustomSnackBar(
+                                  "Email dan Password wajib diisi",
+                                );
+                                return;
+                              }
+
+                              try {
+                                // UserCredential userCredential =
+                                //     await FirebaseAuth.instance
+                                //         .signInWithEmailAndPassword(
+                                //           email: email,
+                                //           password: password,
+                                //         );
+
+                                _showCustomSnackBar(
+                                  "Login berhasil!",
+                                  isSuccess: true,
+                                );
+
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const HomePage(),
+                                  ),
+                                );
+                              } on FirebaseAuthException catch (e) {
+                                String message = "Terjadi kesalahan";
+
+                                if (e.code == 'user-not-found') {
+                                  message = "Akun tidak ditemukan";
+                                } else if (e.code == 'wrong-password') {
+                                  message = "Password salah";
+                                } else if (e.code == 'invalid-email') {
+                                  message = "Email tidak valid";
+                                }
+
+                                _showCustomSnackBar(message);
+                              }
                             },
                             child: Text(
                               "Login",
@@ -163,36 +209,13 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ),
-
-                        const SizedBox(height: 100), // Spacer untuk logo
+                        const SizedBox(height: 100),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
-
-            // Logo Polibatam di kanan bawah
-            // Align(
-            //   alignment: Alignment.bottomRight,
-            //   child: Padding(
-            //     padding: const EdgeInsets.only(right: 16.0, bottom: 16.0),
-            //     child: Image.asset(
-            //       'assets/polibatam.jpg',
-            //       width: 40, // ukuran bisa disesuaikan
-            //     ),
-            //   ),
-            // ),
-            // Align(
-            //   alignment: Alignment.bottomRight,
-            //   child: Padding(
-            //     padding: const EdgeInsets.only(right: 60.0, bottom: 16.0),
-            //     child: Image.asset(
-            //       'assets/instrumentasi.jpg',
-            //       width: 40, // ukuran bisa disesuaikan
-            //     ),
-            //   ),
-            // ),
           ],
         ),
       ),

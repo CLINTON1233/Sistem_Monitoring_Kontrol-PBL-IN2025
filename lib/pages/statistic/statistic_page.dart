@@ -8,6 +8,8 @@ import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart'
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
 
 class StatisticPage extends StatefulWidget {
   const StatisticPage({super.key});
@@ -20,6 +22,50 @@ class _StatisticPageState extends State<StatisticPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
   String _selectedTab = 'Week';
+
+  String _username = 'Loading...';
+  String _email = 'Loading...';
+
+  final FirestoreService _firestoreService = FirestoreService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        // Ambil data dari Firestore
+        Map<String, dynamic>? userData = await _firestoreService.getUserData(
+          currentUser.uid,
+        );
+
+        if (userData != null) {
+          setState(() {
+            _username = userData['username'] ?? 'User';
+            _email = userData['email'] ?? currentUser.email ?? 'No Email';
+          });
+        } else {
+          // Fallback jika data tidak ada di Firestore
+          setState(() {
+            _username = currentUser.displayName ?? 'User';
+            _email = currentUser.email ?? 'No Email';
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      // Set default values jika terjadi error
+      setState(() {
+        _username = 'User';
+        _email = 'No Email';
+      });
+    }
+  }
+
   // Data sensor minggu terakhir (7 hari)
   final List<Map<String, dynamic>> _weeklyData = [
     {
@@ -629,7 +675,7 @@ class _StatisticPageState extends State<StatisticPage> {
                   color: Colors.grey[600],
                 ),
               ),
-              Icon(Icons.more_horiz, color: Colors.grey[400], size: 20),
+              // Icon(Icons.more_horiz, color: Colors.grey[400], size: 20),
             ],
           ),
           const SizedBox(height: 8),
@@ -1128,10 +1174,11 @@ class _StatisticPageState extends State<StatisticPage> {
       backgroundColor: Colors.white,
       child: Column(
         children: [
+          // Drawer Header
           Container(
             height: 200,
             width: double.infinity,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -1145,13 +1192,13 @@ class _StatisticPageState extends State<StatisticPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 25,
                       backgroundColor: Colors.white,
                       child: Text(
-                        'JA',
-                        style: TextStyle(
-                          fontSize: 24,
+                        _getInitials(_username),
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF4B715A),
                         ),
@@ -1159,17 +1206,17 @@ class _StatisticPageState extends State<StatisticPage> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Jelita Agnesia',
+                      _username,
                       style: GoogleFonts.poppins(
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
                     ),
                     Text(
-                      'jelitaagnesia@email.com',
+                      _email,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
@@ -1179,6 +1226,7 @@ class _StatisticPageState extends State<StatisticPage> {
             ),
           ),
           const SizedBox(height: 12),
+          // Menu Items
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -1193,25 +1241,25 @@ class _StatisticPageState extends State<StatisticPage> {
                       MaterialPageRoute(builder: (context) => HomePage()),
                     );
                   },
-                  isActive: false,
                 ),
                 _buildDrawerItem(
                   icon: Icons.info_outline,
                   title: 'Tentang Kami',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushReplacement(
+                    Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => AboutUsPage()),
                     );
                   },
                 ),
+
                 _buildDrawerItem(
                   icon: Icons.show_chart,
                   title: 'Statistik',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushReplacement(
+                    Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => StatisticPage()),
                     );
@@ -1241,6 +1289,8 @@ class _StatisticPageState extends State<StatisticPage> {
               ],
             ),
           ),
+
+          // App Version
           Container(
             padding: const EdgeInsets.all(30),
             child: Text(
@@ -1253,6 +1303,7 @@ class _StatisticPageState extends State<StatisticPage> {
     );
   }
 
+  // Build Drawer Item
   Widget _buildDrawerItem({
     required IconData icon,
     required String title,
@@ -1296,6 +1347,7 @@ class _StatisticPageState extends State<StatisticPage> {
     );
   }
 
+  // Show SnackBar for demo purposes
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1307,6 +1359,18 @@ class _StatisticPageState extends State<StatisticPage> {
     );
   }
 
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'U';
+    List<String> names = name.trim().split(' ');
+    if (names.length == 1) {
+      return names[0].substring(0, 1).toUpperCase();
+    } else {
+      return (names[0].substring(0, 1) + names[1].substring(0, 1))
+          .toUpperCase();
+    }
+  }
+
+  // Show Logout Dialog
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -1347,13 +1411,22 @@ class _StatisticPageState extends State<StatisticPage> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                _showSnackBar('Logout Berhasil');
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => LoginPage()),
-                );
+
+                try {
+                  // Logout dari Firebase Auth
+                  await FirebaseAuth.instance.signOut();
+                  _showSnackBar('Logout Berhasil');
+
+                  // Navigasi ke login page
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginPage()),
+                  );
+                } catch (e) {
+                  _showSnackBar('Error saat logout: $e');
+                }
               },
             ),
           ],

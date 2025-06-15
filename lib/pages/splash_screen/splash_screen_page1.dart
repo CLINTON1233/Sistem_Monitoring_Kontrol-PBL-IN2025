@@ -46,7 +46,7 @@ class _SplashScreenPage1State extends State<SplashScreenPage1> {
                   Text(
                     'Selamat Datang',
                     style: GoogleFonts.poppins(
-                      fontSize: 40,
+                      fontSize: 30,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -55,7 +55,7 @@ class _SplashScreenPage1State extends State<SplashScreenPage1> {
                   Text(
                     'Dari Sensor ke Panen — Semua dalam Genggaman.\n \nPantau Tanaman\nSekarang, kapanpun dan dimanapun.',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       color: Colors.white.withOpacity(0.9),
                     ),
                   ),
@@ -65,8 +65,8 @@ class _SplashScreenPage1State extends State<SplashScreenPage1> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF4B715A),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 36,
-                          vertical: 14,
+                          horizontal: 34,
+                          vertical: 12,
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -84,7 +84,7 @@ class _SplashScreenPage1State extends State<SplashScreenPage1> {
                         "Mulai Sekarang",
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                          fontSize: 14,
                           color: Colors.white,
                         ),
                       ),
@@ -116,8 +116,8 @@ class _SplashScreenPage1State extends State<SplashScreenPage1> {
   Widget _buildDot({required bool isActive}) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      width: isActive ? 32 : 12,
-      height: 8,
+      width: isActive ? 28 : 10,
+      height: 5,
       decoration: BoxDecoration(
         color: isActive ? Colors.white : Colors.white54,
         borderRadius: BorderRadius.circular(12),
