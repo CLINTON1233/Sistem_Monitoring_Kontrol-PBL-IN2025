@@ -34,7 +34,8 @@ class _HomePageState extends State<HomePage> {
 
   bool isSwitched = false;
   int _currentIndex = 0;
-  double _pumpSpeed = 65.0;
+  // double _pumpSpeed = 65.0;
+  bool _isPumpOn = false;
 
   // Variabel untuk menyimpan data user session
   String _username = 'Loading...';
@@ -353,34 +354,34 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'Penyiraman Otomatis',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      Transform.scale(
-                        scale: 0.8,
-                        child: Switch(
-                          value: isSwitched,
-                          onChanged: (value) {
-                            setState(() {
-                              isSwitched = value;
-                            });
-                          },
-                          activeColor: Colors.white,
-                          activeTrackColor: Colors.green,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ],
-                  ),
+                  // const SizedBox(width: 16),
+                  // Column(
+                  //   crossAxisAlignment: CrossAxisAlignment.end,
+                  //   children: [
+                  //     Text(
+                  //       'Penyiraman Otomatis',
+                  //       style: GoogleFonts.poppins(
+                  //         fontSize: 11,
+                  //         color: Colors.grey[600],
+                  //       ),
+                  //     ),
+                  //     Transform.scale(
+                  //       scale: 0.8,
+                  //       child: Switch(
+                  //         value: isSwitched,
+                  //         onChanged: (value) {
+                  //           setState(() {
+                  //             isSwitched = value;
+                  //           });
+                  //         },
+                  //         activeColor: Colors.white,
+                  //         activeTrackColor: Colors.green,
+                  //         materialTapTargetSize:
+                  //             MaterialTapTargetSize.shrinkWrap,
+                  //       ),
+                  //     ),
+                  //   ],
+                  // ),
                 ],
               ),
               const SizedBox(height: 18),
@@ -421,14 +422,14 @@ class _HomePageState extends State<HomePage> {
                           Row(
                             children: [
                               Container(
-                                width: 35,
+                                width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.10),
+                                  color: Colors.blue.withOpacity(0.15),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(
-                                  Icons.speed,
+                                  Icons.power_settings_new,
                                   color: Colors.blue,
                                   size: 24,
                                 ),
@@ -439,7 +440,7 @@ class _HomePageState extends State<HomePage> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Control Kecepatan Pompa',
+                                      'Kontrol Pompa',
                                       style: GoogleFonts.poppins(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
@@ -447,56 +448,51 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     ),
                                     Text(
-                                      '${_pumpSpeed.round()}%',
+                                      _isPumpOn ? 'Pompa Aktif' : 'Pompa Mati',
                                       style: GoogleFonts.poppins(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.blue,
+                                        fontSize: 12,
+                                        color:
+                                            _isPumpOn
+                                                ? Colors.green
+                                                : Colors.grey[600],
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              // Status indicator
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      _pumpSpeed > 0
-                                          ? Colors.green.withOpacity(0.1)
-                                          : Colors.grey.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color:
-                                            _pumpSpeed > 0
+                              // Toggle Switch
+                              Transform.scale(
+                                scale: 0.8,
+                                child: Switch(
+                                  value: _isPumpOn,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _isPumpOn = value;
+                                    });
+                                    // Tampilkan feedback
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          _isPumpOn
+                                              ? 'Pompa diaktifkan'
+                                              : 'Pompa dimatikan',
+                                        ),
+                                        backgroundColor:
+                                            _isPumpOn
                                                 ? Colors.green
-                                                : Colors.grey,
-                                        shape: BoxShape.circle,
+                                                : Colors.orange,
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: Duration(seconds: 2),
                                       ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _pumpSpeed > 0 ? 'Aktif' : 'Mati',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 10,
-                                        color:
-                                            _pumpSpeed > 0
-                                                ? Colors.green
-                                                : Colors.grey,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
+                                    );
+                                  },
+                                  activeColor: Colors.white,
+                                  activeTrackColor: Colors.green,
+                                  inactiveThumbColor: Colors.white,
+                                  inactiveTrackColor: Colors.grey[300],
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
                             ],
@@ -504,80 +500,44 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(height: 16),
 
                           // Custom Slider
-                          Column(
-                            children: [
-                              // Speed labels
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Lambat',
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color:
+                                  _isPumpOn
+                                      ? Colors.green.withOpacity(0.1)
+                                      : Colors.grey.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _isPumpOn ? Colors.green : Colors.grey,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _isPumpOn
+                                        ? 'Pompa sedang beroperasi untuk menyalurkan nutrisi'
+                                        : 'Pompa dalam keadaan mati',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 10,
-                                      color: Colors.grey[500],
+                                      fontSize: 11,
+                                      color:
+                                          _isPumpOn
+                                              ? Colors.green[700]
+                                              : Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  Text(
-                                    'Cepat',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 10,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              // Slider
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 6,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 12,
-                                  ),
-                                  overlayShape: const RoundSliderOverlayShape(
-                                    overlayRadius: 20,
-                                  ),
-                                  activeTrackColor: Colors.green,
-                                  inactiveTrackColor: Colors.grey[300],
-                                  thumbColor: Colors.white,
-                                  overlayColor: Colors.lightGreen.withOpacity(
-                                    0.2,
-                                  ),
-                                  valueIndicatorShape:
-                                      const PaddleSliderValueIndicatorShape(),
-                                  valueIndicatorColor: Colors.blue,
-                                  valueIndicatorTextStyle: GoogleFonts.poppins(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
                                 ),
-                                child: Slider(
-                                  value: _pumpSpeed,
-                                  min: 0,
-                                  max: 100,
-                                  divisions: 20,
-                                  label: '${_pumpSpeed.round()}%',
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _pumpSpeed = value;
-                                    });
-                                  },
-                                ),
-                              ),
-
-                              // Speed indicator text
-                              Text(
-                                _getSpeedText(_pumpSpeed),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: Colors.grey[600],
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),
