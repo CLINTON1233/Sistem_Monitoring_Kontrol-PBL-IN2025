@@ -1,13 +1,14 @@
 {
   "project_info": {
-    "project_number": "862133095308",
-    "project_id": "sistem-monitoring-kontrol",
-    "storage_bucket": "sistem-monitoring-kontrol.firebasestorage.app"
+    "project_number": "455814807543",
+    "firebase_url": "https://grow-iot-8fba8-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "grow-iot-8fba8",
+    "storage_bucket": "grow-iot-8fba8.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:862133095308:android:9682b7745ce681312de4a9",
+        "mobilesdk_app_id": "1:455814807543:android:11059e0e4ca7f8fd3b78f2",
         "android_client_info": {
           "package_name": "com.example.sistem_monitoring_kontrol"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBRkhuJjCkQ_bicsNnR6cpdxRRmjYqUibk"
+          "current_key": "AIzaSyBTem5bWeY22KqdfiuBrjzr4e5g6qg5UFM"
         }
       ],
       "services": {

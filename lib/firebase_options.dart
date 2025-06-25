@@ -51,11 +51,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBRkhuJjCkQ_bicsNnR6cpdxRRmjYqUibk',
-    appId: '1:862133095308:android:9682b7745ce681312de4a9',
-    messagingSenderId: '862133095308',
-    projectId: 'sistem-monitoring-kontrol',
-    storageBucket: 'sistem-monitoring-kontrol.firebasestorage.app',
+    apiKey: 'AIzaSyBTem5bWeY22KqdfiuBrjzr4e5g6qg5UFM',
+    appId: '1:455814807543:android:11059e0e4ca7f8fd3b78f2',
+    messagingSenderId: '455814807543',
+    projectId: 'grow-iot-8fba8',
+    databaseURL: 'https://grow-iot-8fba8-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'grow-iot-8fba8.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
