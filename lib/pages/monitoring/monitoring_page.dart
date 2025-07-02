@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
-import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:sistem_monitoring_kontrol/services/mqtt_service.dart'; // Make sure this path is correct
 
 class MonitoringPage extends StatefulWidget {
   const MonitoringPage({super.key});
@@ -15,75 +19,173 @@ class MonitoringPage extends StatefulWidget {
 
 class _MonitoringPageState extends State<MonitoringPage> {
   int _currentIndex = 1;
-  final MqttService _mqttService = MqttService();
-  
-  // Data sensor real-time
-  double currentPH = 0.0;
-  double currentTDS = 0.0;
-  double currentTemperature = 0.0;
-  double currentHumidity = 0.0;
-  double currentWaterLevel = 0.0;
-  
-  // Data untuk chart
-  List<FlSpot> tdsSpots = [];
-  List<FlSpot> phSpots = [];
-  List<String> timeLabels = [];
-  
-  bool isConnected = false;
+
+  // Data sensor
+  double _phValue = 0.0;
+  double _tdsValue = 0.0;
+  double _temperature = 0.0;
+  double _humidity = 0.0;
+  double _waterHeight = 0.0;
+
+  // Chart data
+  List<FlSpot> _tdsSpots = [];
+  List<FlSpot> _phSpots = [];
+  List<String> _timeLabels = [];
+
+  // MQTT
+  late MqttServerClient _mqttClient;
+  bool _isMqttConnected = false;
+
+  // Firebase
+  late DatabaseReference _databaseRef;
+  bool _isFirebaseInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeMQTT();
+    _initializeFirebase();
+    _connectToMqtt();
   }
 
-  void _initializeMQTT() async {
-    // Setup listener untuk data sensor
-    _mqttService.onDataReceived = (Map<String, double> data) {
+  Future<void> _initializeFirebase() async {
+    try {
+      await Firebase.initializeApp();
+      _databaseRef = FirebaseDatabase.instance.ref('sensor_readings');
       setState(() {
-        currentPH = data['ph'] ?? 0.0;
-        currentTDS = data['tds'] ?? 0.0;
-        currentTemperature = data['temperature'] ?? 0.0;
-        currentHumidity = data['humidity'] ?? 0.0;
-        currentWaterLevel = data['waterLevel'] ?? 0.0;
-        isConnected = true;
-        
-        // Update chart data
+        _isFirebaseInitialized = true;
+      });
+      print('Firebase initialized successfully');
+    } catch (e) {
+      print('Error initializing Firebase: $e');
+    }
+  }
+
+  Future<void> _connectToMqtt() async {
+    _mqttClient = MqttServerClient(
+      'broker.hivemq.com',
+      'monitoring_client_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    _mqttClient.port = 1883;
+    _mqttClient.keepAlivePeriod = 60;
+    _mqttClient.onDisconnected = _onMqttDisconnected;
+    _mqttClient.logging(on: false);
+
+    final connMess = MqttConnectMessage()
+        .withClientIdentifier('monitoring_client')
+        .startClean()
+        .keepAliveFor(60);
+
+    _mqttClient.connectionMessage = connMess;
+
+    try {
+      await _mqttClient.connect();
+      setState(() {
+        _isMqttConnected = true;
+      });
+
+      _mqttClient.subscribe('hidroponik/data', MqttQos.atMostOnce);
+      _mqttClient.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
+        final MqttPublishMessage recMess = c[0].payload as MqttPublishMessage;
+        final String payload = MqttPublishPayload.bytesToStringAsString(
+          recMess.payload.message,
+        );
+        _handleSensorData(payload);
+      });
+    } catch (e) {
+      print('MQTT Connection Exception: $e');
+      _mqttClient.disconnect();
+      setState(() {
+        _isMqttConnected = false;
+      });
+    }
+  }
+
+  void _onMqttDisconnected() {
+    print('MQTT Disconnected');
+    setState(() {
+      _isMqttConnected = false;
+    });
+    Future.delayed(Duration(seconds: 5), _connectToMqtt);
+  }
+
+  void _handleSensorData(String message) {
+    try {
+      final data = json.decode(message);
+
+      double parseValue(dynamic value) {
+        final parsed = double.tryParse(value.toString()) ?? 0.0;
+        if (parsed < 0 || parsed > 1000) return 0.0;
+        return parsed;
+      }
+
+      setState(() {
+        _phValue = parseValue(data['pH']);
+        _tdsValue = parseValue(data['tds']);
+        _waterHeight = parseValue(data['tinggi_air']);
+        _temperature = parseValue(data['suhu']);
+        _humidity = parseValue(data['kelembaban']);
         _updateChartData();
       });
-    };
-    
-    // Connect ke MQTT
-    await _mqttService.connect();
+
+      // Kirim ke Firebase jika sudah terinisialisasi
+      if (_isFirebaseInitialized) {
+        _sendToFirebase(data);
+      } else {
+        print('Firebase not initialized, skipping Firebase upload');
+      }
+
+      print(
+        'Data diterima: pH=$_phValue, TDS=$_tdsValue, Air=$_waterHeight, Suhu=$_temperature, Kelembaban=$_humidity',
+      );
+    } catch (e) {
+      print('Error parsing sensor data: $e');
+    }
+  }
+
+  Future<void> _sendToFirebase(Map<String, dynamic> sensorData) async {
+    try {
+      // Buat struktur data yang lebih baik
+      final dataToSend = {
+        'pH': _phValue,
+        'tds': _tdsValue,
+        'water_level': _waterHeight,
+        'temperature': _temperature,
+        'humidity': _humidity,
+        'timestamp': ServerValue.timestamp,
+        'device': 'monitoring_app',
+      };
+
+      // Gunakan push() untuk membuat ID unik
+      await _databaseRef.push().set(dataToSend);
+      print('Data berhasil dikirim ke Firebase');
+    } catch (e) {
+      print('Gagal mengirim ke Firebase: $e');
+    }
   }
 
   void _updateChartData() {
-    // Batasi data chart maksimal 10 point
-    if (tdsSpots.length >= 10) {
-      tdsSpots.removeAt(0);
-      phSpots.removeAt(0);
-      timeLabels.removeAt(0);
-      
-      // Update x values
-      for (int i = 0; i < tdsSpots.length; i++) {
-        tdsSpots[i] = FlSpot(i.toDouble(), tdsSpots[i].y);
-        phSpots[i] = FlSpot(i.toDouble(), phSpots[i].y);
+    if (_tdsSpots.length >= 10) {
+      _tdsSpots.removeAt(0);
+      _phSpots.removeAt(0);
+      _timeLabels.removeAt(0);
+
+      for (int i = 0; i < _tdsSpots.length; i++) {
+        _tdsSpots[i] = FlSpot(i.toDouble(), _tdsSpots[i].y);
+        _phSpots[i] = FlSpot(i.toDouble(), _phSpots[i].y);
       }
     }
-    
-    // Add new data
-    double newX = tdsSpots.length.toDouble();
-    tdsSpots.add(FlSpot(newX, currentTDS));
-    phSpots.add(FlSpot(newX, currentPH));
-    
-    // Add time label
+
+    double newX = _tdsSpots.length.toDouble();
+    _tdsSpots.add(FlSpot(newX, _tdsValue));
+    _phSpots.add(FlSpot(newX, _phValue));
+
     DateTime now = DateTime.now();
-    timeLabels.add('${now.hour}:${now.minute.toString().padLeft(2, '0')}');
+    _timeLabels.add('${now.hour}:${now.minute.toString().padLeft(2, '0')}');
   }
 
   @override
   void dispose() {
-    _mqttService.disconnect();
+    _mqttClient.disconnect();
     super.dispose();
   }
 
@@ -145,7 +247,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: isConnected ? Colors.green : Colors.red,
+                color: _isMqttConnected ? Colors.green : Colors.red,
                 shape: BoxShape.circle,
               ),
             ),
@@ -163,8 +265,8 @@ class _MonitoringPageState extends State<MonitoringPage> {
               // TDS Chart
               _buildChart(
                 title: 'Grafik TDS',
-                value: '${currentTDS.toStringAsFixed(0)} ppm',
-                spots: tdsSpots,
+                value: '${_tdsValue.toStringAsFixed(0)} ppm',
+                spots: _tdsSpots,
                 maxY: 1000,
                 colors: [Color(0xff3b82f6), Color(0xff1d4ed8)],
               ),
@@ -173,8 +275,8 @@ class _MonitoringPageState extends State<MonitoringPage> {
               // pH Chart
               _buildChart(
                 title: 'Grafik pH',
-                value: currentPH.toStringAsFixed(1),
-                spots: phSpots,
+                value: _phValue.toStringAsFixed(1),
+                spots: _phSpots,
                 maxY: 14,
                 colors: [Color(0xffa855f7), Color(0xff7c3aed)],
               ),
@@ -182,7 +284,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
 
               // Sensor Readings
               Text(
-                'Sensor Readings',
+                'Pembacaan Sensor',
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -199,7 +301,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                         child: _buildStatCard(
                           Icons.thermostat,
                           'Suhu',
-                          currentTemperature.toStringAsFixed(1),
+                          _temperature.toStringAsFixed(1),
                           '°C',
                           Colors.orange.shade600,
                           'DHT11',
@@ -210,7 +312,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                         child: _buildStatCard(
                           Icons.water_drop_outlined,
                           'Kelembaban',
-                          currentHumidity.toStringAsFixed(0),
+                          _humidity.toStringAsFixed(0),
                           '%',
                           Colors.blue.shade600,
                           'DHT11',
@@ -225,7 +327,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                         child: _buildStatCard(
                           Icons.blur_circular,
                           'pH',
-                          currentPH.toStringAsFixed(1),
+                          _phValue.toStringAsFixed(1),
                           '',
                           Colors.purple.shade600,
                           'pH Sensor',
@@ -236,7 +338,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                         child: _buildStatCard(
                           Icons.scatter_plot_outlined,
                           'TDS',
-                          currentTDS.toStringAsFixed(0),
+                          _tdsValue.toStringAsFixed(0),
                           'ppm',
                           Colors.teal.shade600,
                           'TDS Meter',
@@ -250,7 +352,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                     child: _buildStatCard(
                       Icons.waves,
                       'Ketinggian Air',
-                      currentWaterLevel.toStringAsFixed(1),
+                      _waterHeight.toStringAsFixed(1),
                       'cm',
                       Colors.indigo.shade600,
                       'Ultrasonic',
@@ -376,9 +478,15 @@ class _MonitoringPageState extends State<MonitoringPage> {
                   ),
                   const SizedBox(width: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: isConnected ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                      color:
+                          _isMqttConnected
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.red.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -388,16 +496,16 @@ class _MonitoringPageState extends State<MonitoringPage> {
                           width: 4,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: isConnected ? Colors.green : Colors.red,
+                            color: _isMqttConnected ? Colors.green : Colors.red,
                             shape: BoxShape.circle,
                           ),
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          isConnected ? 'Live' : 'Offline',
+                          _isMqttConnected ? 'Live' : 'Offline',
                           style: GoogleFonts.poppins(
                             fontSize: 10,
-                            color: isConnected ? Colors.green : Colors.red,
+                            color: _isMqttConnected ? Colors.green : Colors.red,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -409,151 +517,163 @@ class _MonitoringPageState extends State<MonitoringPage> {
               const SizedBox(height: 24),
               SizedBox(
                 height: 140,
-                child: spots.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Menunggu data sensor...',
-                          style: GoogleFonts.poppins(
-                            color: Colors.grey,
-                            fontSize: 14,
-                          ),
-                        ),
-                      )
-                    : LineChart(
-                        LineChartData(
-                          gridData: FlGridData(
-                            show: true,
-                            drawVerticalLine: true,
-                            drawHorizontalLine: true,
-                            horizontalInterval: maxY > 10 ? 200 : 2,
-                            verticalInterval: 1,
-                            getDrawingHorizontalLine: (value) {
-                              return FlLine(
-                                color: Colors.grey[200]!,
-                                strokeWidth: 1,
-                                dashArray: [3, 3],
-                              );
-                            },
-                            getDrawingVerticalLine: (value) {
-                              return FlLine(
-                                color: Colors.grey[200]!,
-                                strokeWidth: 1,
-                                dashArray: [3, 3],
-                              );
-                            },
-                          ),
-                          titlesData: FlTitlesData(
-                            show: true,
-                            rightTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            topTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            bottomTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                reservedSize: 30,
-                                interval: 1,
-                                getTitlesWidget: (value, meta) {
-                                  int index = value.toInt();
-                                  if (index < timeLabels.length) {
-                                    return Text(
-                                      timeLabels[index],
-                                      style: const TextStyle(
-                                        color: Color(0xff68737d),
-                                        fontWeight: FontWeight.w400,
-                                        fontSize: 12,
-                                      ),
-                                    );
-                                  }
-                                  return const Text('');
-                                },
-                              ),
-                            ),
-                            leftTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                interval: maxY > 10 ? 200 : 2,
-                                getTitlesWidget: (value, meta) {
-                                  const style = TextStyle(
-                                    color: Color(0xff68737d),
-                                    fontWeight: FontWeight.w400,
-                                    fontSize: 10,
-                                  );
-                                  return Text('${value.toInt()}', style: style);
-                                },
-                                reservedSize: 42,
-                              ),
+                child:
+                    spots.isEmpty
+                        ? Center(
+                          child: Text(
+                            'Menunggu data sensor...',
+                            style: GoogleFonts.poppins(
+                              color: Colors.grey,
+                              fontSize: 14,
                             ),
                           ),
-                          borderData: FlBorderData(show: false),
-                          minX: 0,
-                          maxX: spots.length > 0 ? spots.length - 1 : 0,
-                          minY: 0,
-                          maxY: maxY,
-                          lineTouchData: LineTouchData(
-                            enabled: true,
-                            touchTooltipData: LineTouchTooltipData(
-                              getTooltipColor: (touchedSpot) => Colors.black87,
-                              tooltipRoundedRadius: 8,
-                              tooltipPadding: const EdgeInsets.all(8),
-                              getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
-                                return touchedBarSpots.map((barSpot) {
-                                  return LineTooltipItem(
-                                    maxY > 10 
-                                      ? '${barSpot.y.toInt()} ppm'
-                                      : 'pH ${barSpot.y.toStringAsFixed(1)}',
-                                    const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  );
-                                }).toList();
+                        )
+                        : LineChart(
+                          LineChartData(
+                            gridData: FlGridData(
+                              show: true,
+                              drawVerticalLine: true,
+                              drawHorizontalLine: true,
+                              horizontalInterval: maxY > 10 ? 200 : 2,
+                              verticalInterval: 1,
+                              getDrawingHorizontalLine: (value) {
+                                return FlLine(
+                                  color: Colors.grey[200]!,
+                                  strokeWidth: 1,
+                                  dashArray: [3, 3],
+                                );
+                              },
+                              getDrawingVerticalLine: (value) {
+                                return FlLine(
+                                  color: Colors.grey[200]!,
+                                  strokeWidth: 1,
+                                  dashArray: [3, 3],
+                                );
                               },
                             ),
-                          ),
-                          lineBarsData: [
-                            LineChartBarData(
-                              spots: spots,
-                              isCurved: true,
-                              gradient: LinearGradient(colors: colors),
-                              barWidth: 3,
-                              isStrokeCapRound: true,
-                              dotData: FlDotData(
-                                show: true,
-                                getDotPainter: (spot, percent, barData, index) {
-                                  if (index == spots.length - 1) {
-                                    return FlDotCirclePainter(
-                                      radius: 6,
-                                      color: Colors.white,
-                                      strokeWidth: 3,
-                                      strokeColor: colors.last,
-                                    );
-                                  }
-                                  return FlDotCirclePainter(
-                                    radius: 3,
-                                    color: colors.last,
-                                  );
-                                },
+                            titlesData: FlTitlesData(
+                              show: true,
+                              rightTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
                               ),
-                              belowBarData: BarAreaData(
-                                show: true,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    colors.first.withOpacity(0.4),
-                                    colors.last.withOpacity(0.1),
-                                    Colors.transparent,
-                                  ],
+                              topTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 30,
+                                  interval: 1,
+                                  getTitlesWidget: (value, meta) {
+                                    int index = value.toInt();
+                                    if (index < _timeLabels.length) {
+                                      return Text(
+                                        _timeLabels[index],
+                                        style: const TextStyle(
+                                          color: Color(0xff68737d),
+                                          fontWeight: FontWeight.w400,
+                                          fontSize: 12,
+                                        ),
+                                      );
+                                    }
+                                    return const Text('');
+                                  },
+                                ),
+                              ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  interval: maxY > 10 ? 200 : 2,
+                                  getTitlesWidget: (value, meta) {
+                                    const style = TextStyle(
+                                      color: Color(0xff68737d),
+                                      fontWeight: FontWeight.w400,
+                                      fontSize: 10,
+                                    );
+                                    return Text(
+                                      '${value.toInt()}',
+                                      style: style,
+                                    );
+                                  },
+                                  reservedSize: 42,
                                 ),
                               ),
                             ),
-                          ],
+                            borderData: FlBorderData(show: false),
+                            minX: 0,
+                            maxX: spots.length > 0 ? spots.length - 1 : 0,
+                            minY: 0,
+                            maxY: maxY,
+                            lineTouchData: LineTouchData(
+                              enabled: true,
+                              touchTooltipData: LineTouchTooltipData(
+                                getTooltipColor:
+                                    (touchedSpot) => Colors.black87,
+                                tooltipRoundedRadius: 8,
+                                tooltipPadding: const EdgeInsets.all(8),
+                                getTooltipItems: (
+                                  List<LineBarSpot> touchedBarSpots,
+                                ) {
+                                  return touchedBarSpots.map((barSpot) {
+                                    return LineTooltipItem(
+                                      maxY > 10
+                                          ? '${barSpot.y.toInt()} ppm'
+                                          : 'pH ${barSpot.y.toStringAsFixed(1)}',
+                                      const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    );
+                                  }).toList();
+                                },
+                              ),
+                            ),
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: spots,
+                                isCurved: true,
+                                gradient: LinearGradient(colors: colors),
+                                barWidth: 3,
+                                isStrokeCapRound: true,
+                                dotData: FlDotData(
+                                  show: true,
+                                  getDotPainter: (
+                                    spot,
+                                    percent,
+                                    barData,
+                                    index,
+                                  ) {
+                                    if (index == spots.length - 1) {
+                                      return FlDotCirclePainter(
+                                        radius: 6,
+                                        color: Colors.white,
+                                        strokeWidth: 3,
+                                        strokeColor: colors.last,
+                                      );
+                                    }
+                                    return FlDotCirclePainter(
+                                      radius: 3,
+                                      color: colors.last,
+                                    );
+                                  },
+                                ),
+                                belowBarData: BarAreaData(
+                                  show: true,
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      colors.first.withOpacity(0.4),
+                                      colors.last.withOpacity(0.1),
+                                      Colors.transparent,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
               ),
             ],
           ),
@@ -598,9 +718,12 @@ class _MonitoringPageState extends State<MonitoringPage> {
                 child: Icon(icon, size: 20, color: iconColor),
               ),
               Icon(
-                isConnected ? Icons.trending_up : Icons.signal_wifi_off,
+                _isMqttConnected ? Icons.trending_up : Icons.signal_wifi_off,
                 size: 14,
-                color: isConnected ? Colors.green.shade600 : Colors.red.shade600,
+                color:
+                    _isMqttConnected
+                        ? Colors.green.shade600
+                        : Colors.red.shade600,
               ),
             ],
           ),

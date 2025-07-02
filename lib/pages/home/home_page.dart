@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:sistem_monitoring_kontrol/pages/about_us/about_us_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/education/education_page.dart';
@@ -29,19 +32,28 @@ class _HomePageState extends State<HomePage> {
   String _weatherDescription = 'Cerah';
   bool _isLoadingWeather = true;
 
-  final FirestoreService _firestoreService =
-      FirestoreService(); // Tambahkan ini
+  final FirestoreService _firestoreService = FirestoreService();
 
   bool isSwitched = false;
   int _currentIndex = 0;
-  // double _pumpSpeed = 65.0;
   bool _isPumpOn = false;
 
-  // Variabel untuk menyimpan data user session
+  // Variabel untuk data sensor
+  double _phValue = 0.0;
+  double _tdsValue = 0.0;
+  double _waterHeight = 0.0;
+  double _temperature = 0.0;
+  double _humidity = 0.0;
+
+  // Variabel untuk data user session
   String _username = 'Loading...';
   String _email = 'Loading...';
   String _currentDate = '';
   String _currentDay = '';
+
+  // MQTT Client
+  late MqttServerClient _mqttClient;
+  bool _isMqttConnected = false;
 
   @override
   void initState() {
@@ -49,13 +61,89 @@ class _HomePageState extends State<HomePage> {
     _loadUserData();
     _setCurrentDate();
     _loadLocationAndWeather();
+    _connectToMqtt();
+  }
+
+  Future<void> _connectToMqtt() async {
+    _mqttClient = MqttServerClient(
+      'broker.hivemq.com',
+      'flutter_client_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    _mqttClient.port = 1883;
+    _mqttClient.keepAlivePeriod = 60;
+    _mqttClient.onDisconnected = _onMqttDisconnected;
+    _mqttClient.logging(on: false);
+
+    final connMess = MqttConnectMessage()
+        .withClientIdentifier('flutter_client')
+        .startClean()
+        .keepAliveFor(60);
+
+    _mqttClient.connectionMessage = connMess;
+
+    try {
+      await _mqttClient.connect();
+      setState(() {
+        _isMqttConnected = true;
+      });
+
+      _mqttClient.subscribe('hidroponik/data', MqttQos.atMostOnce);
+      _mqttClient.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
+        final MqttPublishMessage recMess = c[0].payload as MqttPublishMessage;
+        final String payload = MqttPublishPayload.bytesToStringAsString(
+          recMess.payload.message,
+        );
+        _handleSensorData(payload);
+      });
+    } catch (e) {
+      print('MQTT Connection Exception: $e');
+      _mqttClient.disconnect();
+      setState(() {
+        _isMqttConnected = false;
+      });
+    }
+  }
+
+  void _onMqttDisconnected() {
+    print('MQTT Disconnected');
+    setState(() {
+      _isMqttConnected = false;
+    });
+    // Reconnect after 5 seconds
+    Future.delayed(Duration(seconds: 5), _connectToMqtt);
+  }
+
+  void _handleSensorData(String message) {
+    try {
+      final data = json.decode(message);
+
+      double parseValue(dynamic value) {
+        final parsed = double.tryParse(value.toString()) ?? 0.0;
+        // Filter nilai yang tidak masuk akal
+        if (parsed < 0 || parsed > 1000) return 0.0;
+        return parsed;
+      }
+
+      setState(() {
+        _phValue = parseValue(data['pH']);
+        _tdsValue = parseValue(data['tds']);
+        _waterHeight = parseValue(data['tinggi_air']);
+        _temperature = parseValue(data['suhu']);
+        _humidity = parseValue(data['kelembaban']);
+      });
+
+      print(
+        'Data sensor diterima: pH=$_phValue, TDS=$_tdsValue, Tinggi Air=$_waterHeight, Suhu=$_temperature, Kelembaban=$_humidity',
+      );
+    } catch (e) {
+      print('Error parsing sensor data: $e');
+    }
   }
 
   Future<void> _loadUserData() async {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // Ambil data dari Firestore
         Map<String, dynamic>? userData = await _firestoreService.getUserData(
           currentUser.uid,
         );
@@ -66,7 +154,6 @@ class _HomePageState extends State<HomePage> {
             _email = userData['email'] ?? currentUser.email ?? 'No Email';
           });
         } else {
-          // Fallback jika data tidak ada di Firestore
           setState(() {
             _username = currentUser.displayName ?? 'User';
             _email = currentUser.email ?? 'No Email';
@@ -75,7 +162,6 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print('Error loading user data: $e');
-      // Set default values jika terjadi error
       setState(() {
         _username = 'User';
         _email = 'No Email';
@@ -123,17 +209,14 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // Coba dapatkan lokasi saat ini
       Position? position = await WeatherService.getCurrentPosition();
 
       if (position != null) {
-        // Dapatkan nama kota dari koordinat
         String cityName = await WeatherService.getCityName(
           position.latitude,
           position.longitude,
         );
 
-        // Dapatkan data cuaca berdasarkan koordinat
         Map<String, dynamic> weatherData =
             await WeatherService.getWeatherByCoordinates(
               position.latitude,
@@ -147,7 +230,6 @@ class _HomePageState extends State<HomePage> {
           _isLoadingWeather = false;
         });
       } else {
-        // Fallback ke Batam jika tidak bisa dapatkan lokasi
         Map<String, dynamic> weatherData =
             await WeatherService.getWeatherByCity('Batam');
 
@@ -160,7 +242,6 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print('Error loading weather: $e');
-      // Set default values jika error
       setState(() {
         _currentLocation = 'Batam, Indonesia';
         _currentTemperature = 28.0;
@@ -200,12 +281,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onBottomNavTap(int index) {
-    if (index == _currentIndex) return; // Don't navigate if same tab
+    if (index == _currentIndex) return;
 
     Widget page;
     switch (index) {
       case 0:
-        // Stay on current page (Home)
         return;
       case 1:
         page = MonitoringPage();
@@ -214,7 +294,7 @@ class _HomePageState extends State<HomePage> {
         page = GuidePage();
         break;
       case 3:
-        page = ProfilePage(); // Navigate to ProfilePage
+        page = ProfilePage();
         break;
       default:
         return;
@@ -227,18 +307,24 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void dispose() {
+    _mqttClient.disconnect();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FA),
-      drawer: _buildDrawer(), // Add the drawer here
+      drawer: _buildDrawer(),
       appBar: AppBar(
         backgroundColor: Color(0xFF4B715A),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.menu, color: Colors.white, size: 24),
           onPressed: () {
-            _scaffoldKey.currentState?.openDrawer(); // Open drawer when pressed
+            _scaffoldKey.currentState?.openDrawer();
           },
         ),
         title: Text(
@@ -251,7 +337,6 @@ class _HomePageState extends State<HomePage> {
         ),
         centerTitle: true,
         actions: [
-          // Tombol notifikasi yang bisa ditekan
           GestureDetector(
             onTap: () {
               Navigator.push(
@@ -278,7 +363,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header with greeting and switch - FIXED VERSION
+              // Header with greeting and switch
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,40 +433,35 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                 ),
+                            const SizedBox(width: 12),
+                            // MQTT Connection Indicator
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color:
+                                    _isMqttConnected
+                                        ? Colors.green
+                                        : Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isMqttConnected ? 'Online' : 'Offline',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                color:
+                                    _isMqttConnected
+                                        ? Colors.green
+                                        : Colors.red,
+                              ),
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
-
-                  // const SizedBox(width: 16),
-                  // Column(
-                  //   crossAxisAlignment: CrossAxisAlignment.end,
-                  //   children: [
-                  //     Text(
-                  //       'Penyiraman Otomatis',
-                  //       style: GoogleFonts.poppins(
-                  //         fontSize: 11,
-                  //         color: Colors.grey[600],
-                  //       ),
-                  //     ),
-                  //     Transform.scale(
-                  //       scale: 0.8,
-                  //       child: Switch(
-                  //         value: isSwitched,
-                  //         onChanged: (value) {
-                  //           setState(() {
-                  //             isSwitched = value;
-                  //           });
-                  //         },
-                  //         activeColor: Colors.white,
-                  //         activeTrackColor: Colors.green,
-                  //         materialTapTargetSize:
-                  //             MaterialTapTargetSize.shrinkWrap,
-                  //       ),
-                  //     ),
-                  //   ],
-                  // ),
                 ],
               ),
               const SizedBox(height: 18),
@@ -404,7 +484,7 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Pump Speed Control - TAMBAHAN BARU
+                    // Pump Speed Control
                     Container(
                       padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
@@ -470,7 +550,6 @@ class _HomePageState extends State<HomePage> {
                                     setState(() {
                                       _isPumpOn = value;
                                     });
-                                    // Tampilkan feedback
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
@@ -562,7 +641,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         const SizedBox(width: 16),
                         Text(
-                          '750 ppm',
+                          '${_tdsValue.toStringAsFixed(0)} ppm',
                           style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -588,7 +667,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         Text(
-                          '75%',
+                          '${(_tdsValue / 1000 * 100).toStringAsFixed(0)}%',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -612,7 +691,10 @@ class _HomePageState extends State<HomePage> {
                         ),
                         Container(
                           height: 5,
-                          width: MediaQuery.of(context).size.width * 0.75 * 0.8,
+                          width:
+                              MediaQuery.of(context).size.width *
+                              (_tdsValue / 1000) *
+                              0.8,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
@@ -632,6 +714,7 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 24),
 
+              // Sensor Cards
               Column(
                 children: [
                   // First row - 2 cards
@@ -641,7 +724,7 @@ class _HomePageState extends State<HomePage> {
                         child: _buildStatCard(
                           Icons.thermostat,
                           'Suhu',
-                          '26.8',
+                          _temperature.toStringAsFixed(1),
                           '°C',
                           Colors.orange.shade600,
                         ),
@@ -651,7 +734,7 @@ class _HomePageState extends State<HomePage> {
                         child: _buildStatCard(
                           Icons.water_drop_outlined,
                           'Kelembaban',
-                          '75',
+                          _humidity.toStringAsFixed(1),
                           '%',
                           Colors.blue.shade600,
                         ),
@@ -667,7 +750,7 @@ class _HomePageState extends State<HomePage> {
                         child: _buildStatCard(
                           Icons.blur_circular,
                           'pH',
-                          '6.2',
+                          _phValue.toStringAsFixed(2),
                           '',
                           Colors.purple.shade600,
                         ),
@@ -677,7 +760,7 @@ class _HomePageState extends State<HomePage> {
                         child: _buildStatCard(
                           Icons.scatter_plot_outlined,
                           'TDS',
-                          '750',
+                          _tdsValue.toStringAsFixed(0),
                           'ppm',
                           Colors.teal.shade600,
                         ),
@@ -688,12 +771,11 @@ class _HomePageState extends State<HomePage> {
 
                   // Third row - 1 card (centered)
                   Container(
-                    width:
-                        MediaQuery.of(context).size.width * 0.9, // Half width
+                    width: MediaQuery.of(context).size.width * 0.9,
                     child: _buildStatCard(
                       Icons.waves,
                       'Ketinggian Air',
-                      '81.6',
+                      _waterHeight.toStringAsFixed(1),
                       'cm',
                       Colors.indigo.shade600,
                     ),
@@ -730,18 +812,13 @@ class _HomePageState extends State<HomePage> {
                             color: Colors.grey[600],
                           ),
                         ),
-                        // Icon(
-                        //   Icons.more_horiz,
-                        //   color: Colors.grey[400],
-                        //   size: 20,
-                        // ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Text(
-                          '35.2°C',
+                          '${_temperature.toStringAsFixed(1)}°C',
                           style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -970,7 +1047,7 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
 
-      // Bottom Navigation Bar with working navigation
+      // Bottom Navigation Bar
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -985,7 +1062,7 @@ class _HomePageState extends State<HomePage> {
         child: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           currentIndex: _currentIndex,
-          onTap: _onBottomNavTap, // Add navigation handler
+          onTap: _onBottomNavTap,
           selectedItemColor: Colors.green,
           unselectedItemColor: Colors.grey[400],
           backgroundColor: Colors.white,
@@ -1022,22 +1099,86 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Helper method untuk mendapatkan text kecepatan
-  String _getSpeedText(double speed) {
-    if (speed == 0) return 'Pompa tidak aktif';
-    if (speed <= 25) return 'Kecepatan sangat lambat';
-    if (speed <= 50) return 'Kecepatan lambat';
-    if (speed <= 75) return 'Kecepatan sedang';
-    return 'Kecepatan tinggi';
+  // Helper Methods
+  Widget _buildStatCard(
+    IconData icon,
+    String label,
+    String value,
+    String unit,
+    Color iconColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 20, color: iconColor),
+              ),
+              Icon(Icons.trending_up, size: 16, color: Colors.green.shade600),
+            ],
+          ),
+          const SizedBox(height: 16),
+          RichText(
+            text: TextSpan(
+              text: value,
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+                height: 1.0,
+              ),
+              children: [
+                if (unit.isNotEmpty)
+                  TextSpan(
+                    text: unit,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black54,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              color: Colors.black54,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  // Build Drawer Menu
   Widget _buildDrawer() {
     return Drawer(
       backgroundColor: Colors.white,
       child: Column(
         children: [
-          // Drawer Header
           Container(
             height: 200,
             width: double.infinity,
@@ -1089,7 +1230,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 12),
-          // Menu Items
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -1117,7 +1257,6 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
-
                 _buildDrawerItem(
                   icon: Icons.show_chart,
                   title: 'Statistik',
@@ -1152,8 +1291,6 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-
-          // App Version
           Container(
             padding: const EdgeInsets.all(30),
             child: Text(
@@ -1166,7 +1303,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Build Drawer Item
   Widget _buildDrawerItem({
     required IconData icon,
     required String title,
@@ -1210,18 +1346,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Show SnackBar for demo purposes
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
   String _getInitials(String name) {
     if (name.isEmpty) return 'U';
     List<String> names = name.trim().split(' ');
@@ -1233,7 +1357,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Show Logout Dialog
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -1276,104 +1399,31 @@ class _HomePageState extends State<HomePage> {
               ),
               onPressed: () async {
                 Navigator.of(context).pop();
-
                 try {
-                  // Logout dari Firebase Auth
                   await FirebaseAuth.instance.signOut();
-                  _showSnackBar('Logout Berhasil');
-
-                  // Navigasi ke login page
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Logout Berhasil'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (context) => LoginPage()),
                   );
                 } catch (e) {
-                  _showSnackBar('Error saat logout: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error saat logout: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
                 }
               },
             ),
           ],
         );
       },
-    );
-  }
-
-  Widget _buildStatCard(
-    IconData icon,
-    String label,
-    String value,
-    String unit,
-    Color iconColor,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with icon and trend
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 20, color: iconColor),
-              ),
-              Icon(Icons.trending_up, size: 16, color: Colors.green.shade600),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Value
-          RichText(
-            text: TextSpan(
-              text: value,
-              style: GoogleFonts.poppins(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-                height: 1.0,
-              ),
-              children: [
-                if (unit.isNotEmpty)
-                  TextSpan(
-                    text: unit,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black54,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // Label
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 10,
-              color: Colors.black54,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
