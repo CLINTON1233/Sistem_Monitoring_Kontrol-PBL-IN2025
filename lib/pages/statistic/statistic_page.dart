@@ -10,6 +10,8 @@ import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:sistem_monitoring_kontrol/utils/datetime_extensions.dart';
 
 class StatisticPage extends StatefulWidget {
   const StatisticPage({super.key});
@@ -28,10 +30,57 @@ class _StatisticPageState extends State<StatisticPage> {
 
   final FirestoreService _firestoreService = FirestoreService();
 
+  List<Map<String, dynamic>> _weeklyData = [];
+  bool _isLoading = true;
+
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadWeeklyStats();
+  }
+
+  Future<void> _loadWeeklyStats() async {
+    try {
+      setState(() => _isLoading = true);
+
+      final now = DateTime.now();
+      final weekKey = '${now.year}-${now.weekOfYear}';
+      final statsRef = FirebaseDatabase.instance.ref(
+        'statistics/$weekKey/days',
+      );
+
+      final snapshot = await statsRef.get();
+
+      if (snapshot.exists) {
+        final data = Map<String, dynamic>.from(snapshot.value as Map);
+        _weeklyData =
+            data.entries.map((entry) {
+              return {
+                'day': entry.value['day_name'],
+                'temp': entry.value['temperature']?.toDouble() ?? 0.0,
+                'humidity': entry.value['humidity']?.toDouble() ?? 0.0,
+                'ph': entry.value['ph']?.toDouble() ?? 0.0,
+                'tds': entry.value['tds']?.toDouble() ?? 0.0,
+                'water': entry.value['water_level']?.toDouble() ?? 0.0,
+              };
+            }).toList();
+
+        // Sort by day (Monday to Sunday)
+        _weeklyData.sort((a, b) {
+          final days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+          return days.indexOf(a['day']).compareTo(days.indexOf(b['day']));
+        });
+      } else {
+        _weeklyData = []; // No data available
+      }
+
+      setState(() => _isLoading = false);
+    } catch (e) {
+      print('Error loading weekly stats: $e');
+      setState(() => _isLoading = false);
+      _weeklyData = []; // Fallback to empty data
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -66,65 +115,6 @@ class _StatisticPageState extends State<StatisticPage> {
     }
   }
 
-  // Data sensor minggu terakhir (7 hari)
-  final List<Map<String, dynamic>> _weeklyData = [
-    {
-      'day': 'Sen',
-      'temp': 26.5,
-      'humidity': 75.0,
-      'ph': 6.2,
-      'tds': 850.0,
-      'water': 85.0,
-    },
-    {
-      'day': 'Sel',
-      'temp': 27.2,
-      'humidity': 78.0,
-      'ph': 6.0,
-      'tds': 880.0,
-      'water': 82.0,
-    },
-    {
-      'day': 'Rab',
-      'temp': 26.8,
-      'humidity': 72.0,
-      'ph': 6.3,
-      'tds': 825.0,
-      'water': 78.0,
-    },
-    {
-      'day': 'Kam',
-      'temp': 27.5,
-      'humidity': 76.0,
-      'ph': 6.1,
-      'tds': 900.0,
-      'water': 75.0,
-    },
-    {
-      'day': 'Jum',
-      'temp': 26.9,
-      'humidity': 74.0,
-      'ph': 6.4,
-      'tds': 870.0,
-      'water': 80.0,
-    },
-    {
-      'day': 'Sab',
-      'temp': 27.1,
-      'humidity': 77.0,
-      'ph': 6.2,
-      'tds': 845.0,
-      'water': 83.0,
-    },
-    {
-      'day': 'Min',
-      'temp': 26.7,
-      'humidity': 75.0,
-      'ph': 6.3,
-      'tds': 860.0,
-      'water': 88.0,
-    },
-  ];
   void _onBottomNavTap(int index) {
     if (index == _currentIndex) return;
 
@@ -193,10 +183,6 @@ class _StatisticPageState extends State<StatisticPage> {
             // Sensor Data Summary
             _buildSensorSummaryCards(),
             const SizedBox(height: 20),
-
-            // Time Period Selector
-            // _buildTimePeriodSelector(),
-            // const SizedBox(height: 20),
 
             // Sensor Charts
             _buildSensorCharts(),
@@ -427,6 +413,37 @@ class _StatisticPageState extends State<StatisticPage> {
   }
 
   Widget _buildSensorSummaryCards() {
+    // Calculate averages
+    final tempAvg =
+        _weeklyData.isEmpty
+            ? 0.0
+            : _weeklyData.map((d) => d['temp']).reduce((a, b) => a + b) /
+                _weeklyData.length;
+
+    final humidityAvg =
+        _weeklyData.isEmpty
+            ? 0.0
+            : _weeklyData.map((d) => d['humidity']).reduce((a, b) => a + b) /
+                _weeklyData.length;
+
+    final phAvg =
+        _weeklyData.isEmpty
+            ? 0.0
+            : _weeklyData.map((d) => d['ph']).reduce((a, b) => a + b) /
+                _weeklyData.length;
+
+    final tdsAvg =
+        _weeklyData.isEmpty
+            ? 0.0
+            : _weeklyData.map((d) => d['tds']).reduce((a, b) => a + b) /
+                _weeklyData.length;
+
+    final waterAvg =
+        _weeklyData.isEmpty
+            ? 0.0
+            : _weeklyData.map((d) => d['water']).reduce((a, b) => a + b) /
+                _weeklyData.length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -444,7 +461,7 @@ class _StatisticPageState extends State<StatisticPage> {
             Expanded(
               child: _buildSensorCard(
                 'Suhu',
-                '26.8°C',
+                '${tempAvg.toStringAsFixed(1)}°C',
                 Icons.thermostat,
                 Colors.orange,
               ),
@@ -453,7 +470,7 @@ class _StatisticPageState extends State<StatisticPage> {
             Expanded(
               child: _buildSensorCard(
                 'Kelembaban',
-                '75%',
+                '${humidityAvg.toStringAsFixed(1)}%',
                 Icons.water_drop,
                 Colors.blue,
               ),
@@ -466,7 +483,7 @@ class _StatisticPageState extends State<StatisticPage> {
             Expanded(
               child: _buildSensorCard(
                 'pH',
-                '6.2',
+                phAvg.toStringAsFixed(1),
                 Icons.blur_circular,
                 Colors.purple,
               ),
@@ -475,7 +492,7 @@ class _StatisticPageState extends State<StatisticPage> {
             Expanded(
               child: _buildSensorCard(
                 'TDS',
-                '861 ppm',
+                '${tdsAvg.toStringAsFixed(0)} ppm',
                 Icons.scatter_plot_outlined,
                 Colors.teal,
               ),
@@ -485,7 +502,7 @@ class _StatisticPageState extends State<StatisticPage> {
         const SizedBox(height: 12),
         _buildSensorCard(
           'Ketinggian Air',
-          '81.6 cm',
+          '${waterAvg.toStringAsFixed(1)} cm',
           Icons.waves,
           Colors.indigo,
         ),
@@ -546,24 +563,6 @@ class _StatisticPageState extends State<StatisticPage> {
       ),
     );
   }
-
-  // Widget _buildTimePeriodSelector() {
-  //   return Container(
-  //     padding: const EdgeInsets.all(4),
-  //     decoration: BoxDecoration(
-  //       color: Colors.grey[100],
-  //       borderRadius: BorderRadius.circular(12),
-  //     ),
-  //     child: Row(
-  //       children: [
-  //         _buildTabButton('Day', 'Hari'),
-  //         _buildTabButton('Week', 'Minggu'),
-  //         // _buildTabButton('Month', 'Bulan'),
-  //         // _buildTabButton('All time', 'Semua'),
-  //       ],
-  //     ),
-  //   );
-  // }
 
   Widget _buildTabButton(String value, String label) {
     bool isSelected = _selectedTab == value;
@@ -675,7 +674,15 @@ class _StatisticPageState extends State<StatisticPage> {
                   color: Colors.grey[600],
                 ),
               ),
-              // Icon(Icons.more_horiz, color: Colors.grey[400], size: 20),
+              if (_isLoading)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: color,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -702,33 +709,23 @@ class _StatisticPageState extends State<StatisticPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.circle, color: Colors.green, size: 8),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Live',
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 20),
-          SizedBox(height: 120, child: chart),
+          SizedBox(
+            height: 120,
+            child:
+                _isLoading
+                    ? Center(child: CircularProgressIndicator(color: color))
+                    : _weeklyData.isEmpty
+                    ? Center(
+                      child: Text(
+                        'Tidak ada data statistik',
+                        style: GoogleFonts.poppins(color: Colors.grey),
+                      ),
+                    )
+                    : chart,
+          ),
         ],
       ),
     );

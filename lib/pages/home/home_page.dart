@@ -16,6 +16,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
 import 'package:sistem_monitoring_kontrol/services/weather_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:sistem_monitoring_kontrol/utils/datetime_extensions.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -25,6 +28,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  late DatabaseReference _databaseRef;
+  bool _isFirebaseInitialized = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   String _currentLocation = 'Batam, Indonesia';
@@ -37,6 +42,10 @@ class _HomePageState extends State<HomePage> {
   bool isSwitched = false;
   int _currentIndex = 0;
   bool _isPumpOn = false;
+
+  // Chart data
+  List<FlSpot> _tempSpots = [];
+  List<String> _timeLabels = [];
 
   // Variabel untuk data sensor
   double _phValue = 0.0;
@@ -58,10 +67,24 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _initializeFirebase();
     _loadUserData();
     _setCurrentDate();
     _loadLocationAndWeather();
     _connectToMqtt();
+  }
+
+  Future<void> _initializeFirebase() async {
+    try {
+      await Firebase.initializeApp();
+      _databaseRef = FirebaseDatabase.instance.ref('sensor_readings');
+      setState(() {
+        _isFirebaseInitialized = true;
+      });
+      print('Firebase initialized successfully');
+    } catch (e) {
+      print('Error initializing Firebase: $e');
+    }
   }
 
   Future<void> _connectToMqtt() async {
@@ -119,7 +142,6 @@ class _HomePageState extends State<HomePage> {
 
       double parseValue(dynamic value) {
         final parsed = double.tryParse(value.toString()) ?? 0.0;
-        // Filter nilai yang tidak masuk akal
         if (parsed < 0 || parsed > 1000) return 0.0;
         return parsed;
       }
@@ -130,13 +152,84 @@ class _HomePageState extends State<HomePage> {
         _waterHeight = parseValue(data['tinggi_air']);
         _temperature = parseValue(data['suhu']);
         _humidity = parseValue(data['kelembaban']);
+        _updateChartData(); // Tambahkan ini
       });
+
+      // Kirim ke Firebase jika sudah terinisialisasi
+      if (_isFirebaseInitialized) {
+        _sendToFirebase(data);
+      } else {
+        print('Firebase not initialized, skipping Firebase upload');
+      }
 
       print(
         'Data sensor diterima: pH=$_phValue, TDS=$_tdsValue, Tinggi Air=$_waterHeight, Suhu=$_temperature, Kelembaban=$_humidity',
       );
     } catch (e) {
       print('Error parsing sensor data: $e');
+    }
+  }
+
+  void _updateChartData() {
+    if (_tempSpots.length >= 10) {
+      _tempSpots.removeAt(0);
+      _timeLabels.removeAt(0);
+
+      // Update indeks untuk spot yang tersisa
+      for (int i = 0; i < _tempSpots.length; i++) {
+        _tempSpots[i] = FlSpot(i.toDouble(), _tempSpots[i].y);
+      }
+    }
+
+    double newX = _tempSpots.length.toDouble();
+    _tempSpots.add(FlSpot(newX, _temperature));
+
+    DateTime now = DateTime.now();
+    _timeLabels.add('${now.hour}:${now.minute.toString().padLeft(2, '0')}');
+  }
+
+  Future<void> _sendToFirebase(Map<String, dynamic> sensorData) async {
+    try {
+      // Current date information
+      final now = DateTime.now();
+      final dayOfWeek = now.weekday; // 1=Monday, 7=Sunday
+      final weekKey =
+          '${now.year}-${now.weekOfYear}'; // Unique key for each week
+
+      // Main sensor data
+      final dataToSend = {
+        'pH': _phValue,
+        'tds': _tdsValue,
+        'water_level': _waterHeight,
+        'temperature': _temperature,
+        'humidity': _humidity,
+        'timestamp': ServerValue.timestamp,
+        'device': 'home_app',
+      };
+
+      // Send to main sensor readings
+      await _databaseRef.push().set(dataToSend);
+
+      // Send to weekly statistics
+      final weeklyStatsRef = FirebaseDatabase.instance.ref(
+        'statistics/$weekKey/days/$dayOfWeek',
+      );
+
+      // Update or create the day's statistics
+      await weeklyStatsRef.update({
+        'day_name':
+            ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][dayOfWeek - 1],
+        'temperature': _temperature,
+        'humidity': _humidity,
+        'ph': _phValue,
+        'tds': _tdsValue,
+        'water_level': _waterHeight,
+        'last_updated': ServerValue.timestamp,
+      });
+
+      print('Data berhasil dikirim ke Firebase (readings & statistics)');
+    } catch (e) {
+      print('Gagal mengirim ke Firebase: $e');
     }
   }
 
@@ -785,6 +878,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
 
               // Chart Card
+              // Chart Card
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -806,7 +900,7 @@ class _HomePageState extends State<HomePage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Suhu dari Waktu Kewaktu',
+                          'Suhu dari Waktu ke Waktu',
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: Colors.grey[600],
@@ -832,7 +926,10 @@ class _HomePageState extends State<HomePage> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
+                            color:
+                                _isMqttConnected
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.red.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -841,17 +938,23 @@ class _HomePageState extends State<HomePage> {
                               Container(
                                 width: 6,
                                 height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Colors.green,
+                                decoration: BoxDecoration(
+                                  color:
+                                      _isMqttConnected
+                                          ? Colors.green
+                                          : Colors.red,
                                   shape: BoxShape.circle,
                                 ),
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                'Live',
+                                _isMqttConnected ? 'Live' : 'Offline',
                                 style: GoogleFonts.poppins(
                                   fontSize: 12,
-                                  color: Colors.green,
+                                  color:
+                                      _isMqttConnected
+                                          ? Colors.green
+                                          : Colors.red,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -863,180 +966,176 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 24),
                     SizedBox(
                       height: 180,
-                      child: LineChart(
-                        LineChartData(
-                          gridData: FlGridData(
-                            show: true,
-                            drawVerticalLine: true,
-                            drawHorizontalLine: true,
-                            horizontalInterval: 10,
-                            verticalInterval: 1,
-                            getDrawingHorizontalLine: (value) {
-                              return FlLine(
-                                color: Colors.grey[200]!,
-                                strokeWidth: 1,
-                                dashArray: [3, 3],
-                              );
-                            },
-                            getDrawingVerticalLine: (value) {
-                              return FlLine(
-                                color: Colors.grey[200]!,
-                                strokeWidth: 1,
-                                dashArray: [3, 3],
-                              );
-                            },
-                          ),
-                          titlesData: FlTitlesData(
-                            show: true,
-                            rightTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            topTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            bottomTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                reservedSize: 30,
-                                interval: 1,
-                                getTitlesWidget: (
-                                  double value,
-                                  TitleMeta meta,
-                                ) {
-                                  const style = TextStyle(
-                                    color: Color(0xff68737d),
-                                    fontWeight: FontWeight.w400,
-                                    fontSize: 12,
-                                  );
-                                  Widget text;
-                                  switch (value.toInt()) {
-                                    case 0:
-                                      text = const Text('13:00', style: style);
-                                      break;
-                                    case 1:
-                                      text = const Text('14:00', style: style);
-                                      break;
-                                    case 2:
-                                      text = const Text('15:00', style: style);
-                                      break;
-                                    case 3:
-                                      text = const Text('16:00', style: style);
-                                      break;
-                                    case 4:
-                                      text = const Text('17:00', style: style);
-                                      break;
-                                    case 5:
-                                      text = const Text('18:00', style: style);
-                                      break;
-                                    default:
-                                      text = const Text('', style: style);
-                                      break;
-                                  }
-                                  return SideTitleWidget(
-                                    axisSide: meta.axisSide,
-                                    child: text,
-                                  );
-                                },
-                              ),
-                            ),
-                            leftTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                interval: 50,
-                                getTitlesWidget: (
-                                  double value,
-                                  TitleMeta meta,
-                                ) {
-                                  const style = TextStyle(
-                                    color: Color(0xff68737d),
-                                    fontWeight: FontWeight.w400,
-                                    fontSize: 10,
-                                  );
-                                  return Text(
-                                    '${value.toInt()}°C',
-                                    style: style,
-                                  );
-                                },
-                                reservedSize: 42,
-                              ),
-                            ),
-                          ),
-                          borderData: FlBorderData(show: false),
-                          minX: 0,
-                          maxX: 5,
-                          minY: 0,
-                          maxY: 200,
-                          lineTouchData: LineTouchData(
-                            enabled: true,
-                            touchTooltipData: LineTouchTooltipData(
-                              getTooltipColor: (touchedSpot) => Colors.black87,
-                              tooltipRoundedRadius: 8,
-                              tooltipPadding: const EdgeInsets.all(8),
-                              getTooltipItems: (
-                                List<LineBarSpot> touchedBarSpots,
-                              ) {
-                                return touchedBarSpots.map((barSpot) {
-                                  return LineTooltipItem(
-                                    'Feb. 22\n${barSpot.y.toInt()}°C',
-                                    const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                      child:
+                          _tempSpots.isEmpty
+                              ? Center(
+                                child: Text(
+                                  'Menunggu data sensor...',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              )
+                              : LineChart(
+                                LineChartData(
+                                  gridData: FlGridData(
+                                    show: true,
+                                    drawVerticalLine: true,
+                                    drawHorizontalLine: true,
+                                    horizontalInterval: 10,
+                                    verticalInterval: 1,
+                                    getDrawingHorizontalLine: (value) {
+                                      return FlLine(
+                                        color: Colors.grey[200]!,
+                                        strokeWidth: 1,
+                                        dashArray: [3, 3],
+                                      );
+                                    },
+                                    getDrawingVerticalLine: (value) {
+                                      return FlLine(
+                                        color: Colors.grey[200]!,
+                                        strokeWidth: 1,
+                                        dashArray: [3, 3],
+                                      );
+                                    },
+                                  ),
+                                  titlesData: FlTitlesData(
+                                    show: true,
+                                    rightTitles: const AxisTitles(
+                                      sideTitles: SideTitles(showTitles: false),
                                     ),
-                                  );
-                                }).toList();
-                              },
-                            ),
-                          ),
-                          lineBarsData: [
-                            LineChartBarData(
-                              spots: const [
-                                FlSpot(0, 120),
-                                FlSpot(1, 140),
-                                FlSpot(2, 160),
-                                FlSpot(3, 100),
-                                FlSpot(4, 120),
-                                FlSpot(5, 140),
-                              ],
-                              isCurved: true,
-                              gradient: const LinearGradient(
-                                colors: [Color(0xff4ade80), Color(0xff22c55e)],
-                              ),
-                              barWidth: 3,
-                              isStrokeCapRound: true,
-                              dotData: FlDotData(
-                                show: true,
-                                getDotPainter: (spot, percent, barData, index) {
-                                  if (index == 2) {
-                                    return FlDotCirclePainter(
-                                      radius: 6,
-                                      color: Colors.white,
-                                      strokeWidth: 3,
-                                      strokeColor: const Color(0xff22c55e),
-                                    );
-                                  }
-                                  return FlDotCirclePainter(
-                                    radius: 3,
-                                    color: const Color(0xff22c55e),
-                                  );
-                                },
-                              ),
-                              belowBarData: BarAreaData(
-                                show: true,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    const Color(0xff4ade80).withOpacity(0.4),
-                                    const Color(0xff22c55e).withOpacity(0.1),
-                                    Colors.transparent,
+                                    topTitles: const AxisTitles(
+                                      sideTitles: SideTitles(showTitles: false),
+                                    ),
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        reservedSize: 30,
+                                        interval: 1,
+                                        getTitlesWidget: (value, meta) {
+                                          int index = value.toInt();
+                                          if (index < _timeLabels.length) {
+                                            return Text(
+                                              _timeLabels[index],
+                                              style: const TextStyle(
+                                                color: Color(0xff68737d),
+                                                fontWeight: FontWeight.w400,
+                                                fontSize: 12,
+                                              ),
+                                            );
+                                          }
+                                          return const Text('');
+                                        },
+                                      ),
+                                    ),
+                                    leftTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        interval: 10,
+                                        getTitlesWidget: (value, meta) {
+                                          const style = TextStyle(
+                                            color: Color(0xff68737d),
+                                            fontWeight: FontWeight.w400,
+                                            fontSize: 10,
+                                          );
+                                          return Text(
+                                            '${value.toInt()}°C',
+                                            style: style,
+                                          );
+                                        },
+                                        reservedSize: 42,
+                                      ),
+                                    ),
+                                  ),
+                                  borderData: FlBorderData(show: false),
+                                  minX: 0,
+                                  maxX:
+                                      _tempSpots.length > 0
+                                          ? _tempSpots.length - 1
+                                          : 0,
+                                  minY: 0,
+                                  maxY:
+                                      50, // Sesuaikan dengan range suhu yang diharapkan
+                                  lineTouchData: LineTouchData(
+                                    enabled: true,
+                                    touchTooltipData: LineTouchTooltipData(
+                                      getTooltipColor:
+                                          (touchedSpot) => Colors.black87,
+                                      tooltipRoundedRadius: 8,
+                                      tooltipPadding: const EdgeInsets.all(8),
+                                      getTooltipItems: (
+                                        List<LineBarSpot> touchedBarSpots,
+                                      ) {
+                                        return touchedBarSpots.map((barSpot) {
+                                          return LineTooltipItem(
+                                            '${_timeLabels[barSpot.x.toInt()]}\n${barSpot.y.toStringAsFixed(1)}°C',
+                                            const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          );
+                                        }).toList();
+                                      },
+                                    ),
+                                  ),
+                                  lineBarsData: [
+                                    LineChartBarData(
+                                      spots: _tempSpots,
+                                      isCurved: true,
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xff4ade80),
+                                          Color(0xff22c55e),
+                                        ],
+                                      ),
+                                      barWidth: 3,
+                                      isStrokeCapRound: true,
+                                      dotData: FlDotData(
+                                        show: true,
+                                        getDotPainter: (
+                                          spot,
+                                          percent,
+                                          barData,
+                                          index,
+                                        ) {
+                                          if (index == _tempSpots.length - 1) {
+                                            return FlDotCirclePainter(
+                                              radius: 6,
+                                              color: Colors.white,
+                                              strokeWidth: 3,
+                                              strokeColor: const Color(
+                                                0xff22c55e,
+                                              ),
+                                            );
+                                          }
+                                          return FlDotCirclePainter(
+                                            radius: 3,
+                                            color: const Color(0xff22c55e),
+                                          );
+                                        },
+                                      ),
+                                      belowBarData: BarAreaData(
+                                        show: true,
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            const Color(
+                                              0xff4ade80,
+                                            ).withOpacity(0.4),
+                                            const Color(
+                                              0xff22c55e,
+                                            ).withOpacity(0.1),
+                                            Colors.transparent,
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                   ],
                 ),

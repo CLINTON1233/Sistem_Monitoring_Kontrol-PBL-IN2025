@@ -9,6 +9,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
+import 'package:sistem_monitoring_kontrol/utils/datetime_extensions.dart';
 
 class MonitoringPage extends StatefulWidget {
   const MonitoringPage({super.key});
@@ -144,7 +145,12 @@ class _MonitoringPageState extends State<MonitoringPage> {
 
   Future<void> _sendToFirebase(Map<String, dynamic> sensorData) async {
     try {
-      // Buat struktur data yang lebih baik
+      // Current date information
+      final now = DateTime.now();
+      final dayOfWeek = now.weekday;
+      final weekKey = '${now.year}-${now.weekOfYear}';
+
+      // Main sensor data
       final dataToSend = {
         'pH': _phValue,
         'tds': _tdsValue,
@@ -152,12 +158,40 @@ class _MonitoringPageState extends State<MonitoringPage> {
         'temperature': _temperature,
         'humidity': _humidity,
         'timestamp': ServerValue.timestamp,
-        'device': 'monitoring_app',
+        'device': 'monitoring_app', // Berbeda dengan home_app untuk tracking
       };
 
-      // Gunakan push() untuk membuat ID unik
+      // Send to main sensor readings
       await _databaseRef.push().set(dataToSend);
-      print('Data berhasil dikirim ke Firebase');
+
+      // Send to weekly statistics
+      final weeklyStatsRef = FirebaseDatabase.instance.ref(
+        'statistics/$weekKey/days/$dayOfWeek',
+      );
+
+      // Get current data first to preserve existing values
+      final snapshot = await weeklyStatsRef.get();
+      Map<String, dynamic> currentData = {};
+
+      if (snapshot.exists) {
+        currentData = Map<String, dynamic>.from(snapshot.value as Map);
+      }
+
+      // Update or create the day's statistics
+      await weeklyStatsRef.update({
+        'day_name':
+            ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][dayOfWeek - 1],
+        'temperature': _temperature,
+        'humidity': _humidity,
+        'ph': _phValue,
+        'tds': _tdsValue,
+        'water_level': _waterHeight,
+        'last_updated': ServerValue.timestamp,
+        // Preserve existing values if they exist
+        ...currentData,
+      });
+
+      print('Data berhasil dikirim ke Firebase (readings & statistics)');
     } catch (e) {
       print('Gagal mengirim ke Firebase: $e');
     }
@@ -426,15 +460,6 @@ class _MonitoringPageState extends State<MonitoringPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 16),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(20),
@@ -456,11 +481,10 @@ class _MonitoringPageState extends State<MonitoringPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    title.split(' ')[1], // Ambil kata kedua (TDS/pH)
+                    '$title dari Waktu ke Waktu',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      fontSize: 12,
+                      color: Colors.grey[600],
                     ),
                   ),
                 ],
@@ -471,7 +495,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                   Text(
                     value,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: Colors.black87,
                     ),
@@ -493,8 +517,8 @@ class _MonitoringPageState extends State<MonitoringPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 4,
-                          height: 4,
+                          width: 6,
+                          height: 6,
                           decoration: BoxDecoration(
                             color: _isMqttConnected ? Colors.green : Colors.red,
                             shape: BoxShape.circle,
@@ -504,7 +528,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                         Text(
                           _isMqttConnected ? 'Live' : 'Offline',
                           style: GoogleFonts.poppins(
-                            fontSize: 10,
+                            fontSize: 12,
                             color: _isMqttConnected ? Colors.green : Colors.red,
                             fontWeight: FontWeight.w500,
                           ),
@@ -516,7 +540,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
               ),
               const SizedBox(height: 24),
               SizedBox(
-                height: 140,
+                height: 180,
                 child:
                     spots.isEmpty
                         ? Center(
@@ -591,7 +615,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
                                       fontSize: 10,
                                     );
                                     return Text(
-                                      '${value.toInt()}',
+                                      '${value.toInt()}${maxY > 10 ? ' ppm' : ''}',
                                       style: style,
                                     );
                                   },
