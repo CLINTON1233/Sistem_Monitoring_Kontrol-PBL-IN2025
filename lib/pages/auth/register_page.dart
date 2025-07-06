@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
+import 'package:sistem_monitoring_kontrol/services/realtime_auth_services.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -19,7 +19,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController confirmPasswordController =
       TextEditingController();
 
-  final FirestoreService _firestoreService = FirestoreService();
+  final RealtimeAuthService _realtimeAuthService = RealtimeAuthService();
   bool isObscuredPassword = true;
   bool isObscuredConfirm = true;
   bool isLoading = false;
@@ -87,7 +87,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
     try {
       // Cek username exists
-      bool usernameExists = await _firestoreService.isUsernameExists(username);
+      bool usernameExists = await _realtimeAuthService.isUsernameExists(
+        username,
+      );
       if (usernameExists) {
         _showSnackBar("Username sudah digunakan");
         setState(() {
@@ -99,8 +101,8 @@ class _RegisterPageState extends State<RegisterPage> {
       UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      // Simpan ke Firestore
-      await _firestoreService.saveUserData(
+      // Simpan ke Realtime Database
+      await _realtimeAuthService.saveUserData(
         userId: userCredential.user!.uid,
         username: username,
         email: email,

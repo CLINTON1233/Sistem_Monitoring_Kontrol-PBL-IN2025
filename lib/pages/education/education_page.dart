@@ -7,9 +7,9 @@ import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/statistic/statistic_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sistem_monitoring_kontrol/services/firestore_education_services.dart'
+import 'package:sistem_monitoring_kontrol/services/realtime_education_services.dart'
     as EducationService;
-import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart'
+import 'package:sistem_monitoring_kontrol/services/realtime_auth_services.dart'
     as AuthService;
 
 class EducationPage extends StatefulWidget {
@@ -24,8 +24,8 @@ class _EducationPageState extends State<EducationPage> {
   String _username = 'Loading...';
   String _email = 'Loading...';
 
-  final EducationService.FirestoreService _firestoreService =
-      EducationService.FirestoreService();
+  final EducationService.RealtimeEducationService _realtimeService =
+      EducationService.RealtimeEducationService();
   int _currentIndex = 0;
 
   List<Map<String, dynamic>> _hydroponicPlants = [];
@@ -44,29 +44,41 @@ class _EducationPageState extends State<EducationPage> {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // Gunakan AuthService untuk mengambil data user
-        final AuthService.FirestoreService authService =
-            AuthService.FirestoreService();
-        Map<String, dynamic>? userData = await authService.getUserData(
-          currentUser.uid,
-        );
+        print('Current User UID: ${currentUser.uid}');
 
-        if (userData != null) {
+        final AuthService.RealtimeAuthService authService =
+            AuthService.RealtimeAuthService();
+
+        // Tambahkan timeout untuk menghindari hanging
+        Map<String, dynamic>? userData = await authService
+            .getUserData(currentUser.uid)
+            .timeout(const Duration(seconds: 5));
+
+        print('Data dari Realtime DB: $userData');
+
+        if (userData != null && userData.isNotEmpty) {
+          print('Menggunakan data dari Realtime DB');
           setState(() {
             _username = userData['username'] ?? 'User';
-            _email = userData['email'] ?? currentUser.email ?? 'No Email';
+            _email = userData['email'] ?? 'No Email';
           });
         } else {
-          // Fallback jika data tidak ada di Firestore
+          print(
+            'Data tidak ditemukan di Realtime DB, menggunakan data dari Firebase Auth',
+          );
           setState(() {
-            _username = currentUser.displayName ?? 'User';
+            _username =
+                currentUser.displayName ??
+                currentUser.email?.split('@')[0] ??
+                'User';
             _email = currentUser.email ?? 'No Email';
           });
         }
+      } else {
+        print('Tidak ada user yang login');
       }
     } catch (e) {
-      print('Error loading user data: $e');
-      // Set default values jika terjadi error
+      print('Error dalam _loadUserData: $e');
       setState(() {
         _username = 'User';
         _email = 'No Email';
@@ -76,10 +88,8 @@ class _EducationPageState extends State<EducationPage> {
 
   Future<void> _initializeData() async {
     try {
-      // Inisialisasi data (hanya jalankan sekali)
-      await _firestoreService.initializeEducationData();
-
-      // Load data dari Firebase
+      // Ganti panggilan ke realtime service
+      await _realtimeService.initializeEducationData();
       await _loadEducationData();
     } catch (e) {
       print('Error initializing data: $e');
@@ -93,8 +103,9 @@ class _EducationPageState extends State<EducationPage> {
     try {
       setState(() => _isLoading = true);
 
+      // Ganti panggilan ke realtime service
       List<Map<String, dynamic>> data =
-          await _firestoreService.getEducationData();
+          await _realtimeService.getEducationData();
 
       setState(() {
         _hydroponicPlants = data;
@@ -508,8 +519,8 @@ class _EducationPageState extends State<EducationPage> {
 
   Future<void> initializeAppData() async {
     try {
-      EducationService.FirestoreService firestoreService =
-          EducationService.FirestoreService();
+      EducationService.RealtimeEducationService firestoreService =
+          EducationService.RealtimeEducationService();
       await firestoreService.initializeEducationData();
       print('App data initialized successfully');
     } catch (e) {

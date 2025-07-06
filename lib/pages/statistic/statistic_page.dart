@@ -9,7 +9,7 @@ import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
+import 'package:sistem_monitoring_kontrol/services/realtime_auth_services.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:sistem_monitoring_kontrol/utils/datetime_extensions.dart';
 
@@ -28,7 +28,7 @@ class _StatisticPageState extends State<StatisticPage> {
   String _username = 'Loading...';
   String _email = 'Loading...';
 
-  final FirestoreService _firestoreService = FirestoreService();
+  final RealtimeAuthService _realtimeAuthService = RealtimeAuthService();
 
   List<Map<String, dynamic>> _weeklyData = [];
   bool _isLoading = true;
@@ -87,8 +87,8 @@ class _StatisticPageState extends State<StatisticPage> {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // Ambil data dari Firestore
-        Map<String, dynamic>? userData = await _firestoreService.getUserData(
+        // Coba ambil dari Realtime Database
+        Map<String, dynamic>? userData = await _realtimeAuthService.getUserData(
           currentUser.uid,
         );
 
@@ -98,16 +98,27 @@ class _StatisticPageState extends State<StatisticPage> {
             _email = userData['email'] ?? currentUser.email ?? 'No Email';
           });
         } else {
-          // Fallback jika data tidak ada di Firestore
+          // Jika tidak ada di Realtime DB, gunakan data dari Firebase Auth
           setState(() {
-            _username = currentUser.displayName ?? 'User';
+            _username =
+                currentUser.displayName ??
+                currentUser.email?.split('@').first ??
+                'User';
             _email = currentUser.email ?? 'No Email';
           });
+
+          // Simpan ke Realtime DB untuk next time
+          if (currentUser.email != null) {
+            await _realtimeAuthService.saveUserData(
+              userId: currentUser.uid,
+              username: _username,
+              email: _email,
+            );
+          }
         }
       }
     } catch (e) {
       print('Error loading user data: $e');
-      // Set default values jika terjadi error
       setState(() {
         _username = 'User';
         _email = 'No Email';

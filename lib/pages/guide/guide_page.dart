@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
-import 'package:sistem_monitoring_kontrol/services/firestore_guide_services.dart';
+import 'package:sistem_monitoring_kontrol/services/realtime_guide_services.dart'; // Diubah ke Realtime
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_detail_page.dart';
 
 class GuidePage extends StatefulWidget {
@@ -15,7 +15,8 @@ class GuidePage extends StatefulWidget {
 
 class _GuidePageState extends State<GuidePage> {
   int _currentIndex = 2;
-  final FirestoreGuideService _guideService = FirestoreGuideService();
+  final RealtimeGuideService _guideService =
+      RealtimeGuideService(); // Diubah ke Realtime
   List<Map<String, dynamic>> _guides = [];
   bool _isLoading = true;
   String _errorMessage = '';

@@ -13,7 +13,7 @@ import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart'
 import 'package:sistem_monitoring_kontrol/pages/statistic/statistic_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/profile/profile_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
+import 'package:sistem_monitoring_kontrol/services/realtime_auth_services.dart';
 import 'package:sistem_monitoring_kontrol/services/weather_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -37,7 +37,7 @@ class _HomePageState extends State<HomePage> {
   String _weatherDescription = 'Cerah';
   bool _isLoadingWeather = true;
 
-  final FirestoreService _firestoreService = FirestoreService();
+  final RealtimeAuthService _realtimeAuthService = RealtimeAuthService();
 
   bool isSwitched = false;
   int _currentIndex = 0;
@@ -261,8 +261,8 @@ class _HomePageState extends State<HomePage> {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // Coba ambil dari Firestore dulu
-        Map<String, dynamic>? userData = await _firestoreService.getUserData(
+        // Coba ambil dari Realtime Database
+        Map<String, dynamic>? userData = await _realtimeAuthService.getUserData(
           currentUser.uid,
         );
 
@@ -272,7 +272,7 @@ class _HomePageState extends State<HomePage> {
             _email = userData['email'] ?? currentUser.email ?? 'No Email';
           });
         } else {
-          // Jika tidak ada di Firestore, coba ambil dari Firebase Auth
+          // Jika tidak ada di Realtime DB, gunakan data dari Firebase Auth
           setState(() {
             _username =
                 currentUser.displayName ??
@@ -281,9 +281,9 @@ class _HomePageState extends State<HomePage> {
             _email = currentUser.email ?? 'No Email';
           });
 
-          // Simpan ke Firestore untuk next time
+          // Simpan ke Realtime DB untuk next time
           if (currentUser.email != null) {
-            await _firestoreService.saveUserData(
+            await _realtimeAuthService.saveUserData(
               userId: currentUser.uid,
               username: _username,
               email: _email,

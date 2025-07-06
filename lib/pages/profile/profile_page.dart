@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/monitoring/monitoring_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/guide/guide_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sistem_monitoring_kontrol/services/firestore_auth_services.dart';
+import 'package:sistem_monitoring_kontrol/services/realtime_auth_services.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,7 +16,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirestoreService _firestoreService = FirestoreService();
+  final RealtimeAuthService _realtimeAuthService = RealtimeAuthService();
   User? _currentUser;
   bool _isLoading = false;
   int _currentIndex = 3;
@@ -65,7 +66,7 @@ class _ProfilePageState extends State<ProfilePage> {
       });
 
       try {
-        Map<String, dynamic>? userData = await _firestoreService.getUserData(
+        Map<String, dynamic>? userData = await _realtimeAuthService.getUserData(
           _currentUser!.uid,
         );
         if (userData != null) {
@@ -76,7 +77,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _emailController.text = _currentUser!.email ?? '';
         }
       } catch (e) {
-        _showSnackBar('Gagal memuat data: $e'); // Error = merah
+        _showSnackBar('Gagal memuat data: $e');
       } finally {
         setState(() {
           _isLoading = false;
@@ -123,27 +124,25 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _saveProfile() async {
     if (_currentUser == null) {
-      _showSnackBar('User tidak ditemukan'); // Error = merah
+      _showSnackBar('User tidak ditemukan');
       return;
     }
 
     // Validasi form tidak kosong
     if (_usernameController.text.isEmpty || _emailController.text.isEmpty) {
-      _showSnackBar('Username dan Email harus diisi'); // Error = merah
+      _showSnackBar('Username dan Email harus diisi');
       return;
     }
 
     // Validasi password jika diisi
     if (_passwordController.text.isNotEmpty) {
       if (_passwordController.text != _confirmPasswordController.text) {
-        _showSnackBar(
-          'Password dan konfirmasi password tidak cocok',
-        ); // Error = merah
+        _showSnackBar('Password dan konfirmasi password tidak cocok');
         return;
       }
 
       if (_passwordController.text.length < 6) {
-        _showSnackBar('Password minimal 6 karakter'); // Error = merah
+        _showSnackBar('Password minimal 6 karakter');
         return;
       }
     }
@@ -153,18 +152,17 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      // ... kode lainnya ...
-
       // Cek username sudah digunakan
-      bool usernameExists = await _firestoreService.isUsernameExists(
+      bool usernameExists = await _realtimeAuthService.isUsernameExists(
         _usernameController.text,
       );
+
       if (usernameExists) {
-        Map<String, dynamic>? currentUserData = await _firestoreService
+        Map<String, dynamic>? currentUserData = await _realtimeAuthService
             .getUserData(_currentUser!.uid);
         if (currentUserData == null ||
             currentUserData['username'] != _usernameController.text) {
-          _showSnackBar('Username sudah digunakan'); // Error = merah
+          _showSnackBar('Username sudah digunakan');
           setState(() {
             _isLoading = false;
           });
@@ -182,23 +180,57 @@ class _ProfilePageState extends State<ProfilePage> {
         await _currentUser!.updatePassword(_passwordController.text);
       }
 
-      // Update data di Firestore
-      await _firestoreService.updateUserData(
+      // Update data di Realtime Database
+      await _realtimeAuthService.saveUserData(
         userId: _currentUser!.uid,
-        data: {
-          'username': _usernameController.text,
-          'email': _emailController.text,
-        },
+        username: _usernameController.text,
+        email: _emailController.text,
       );
 
       // Clear password fields setelah berhasil
       _passwordController.clear();
       _confirmPasswordController.clear();
 
-      _showSnackBar(
-        'Profil berhasil disimpan',
-        isSuccess: true,
-      ); // Success = hijau
+      // Tampilkan alert dialog
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => AlertDialog(
+              title: Text(
+                'Sukses',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              ),
+              content: Text(
+                'Profile berhasil disimpan, silahkan login kembali',
+                style: GoogleFonts.poppins(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    // Logout user
+                    await FirebaseAuth.instance.signOut();
+                    // Navigasi ke login page
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => LoginPage()),
+                      (route) => false,
+                    );
+                  },
+                  child: Text(
+                    'OK',
+                    style: GoogleFonts.poppins(
+                      color: const Color(0xFF4B715A),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+      );
     } on FirebaseAuthException catch (e) {
       String errorMessage;
       switch (e.code) {
@@ -218,9 +250,9 @@ class _ProfilePageState extends State<ProfilePage> {
           errorMessage = 'Terjadi kesalahan: ${e.message}';
       }
 
-      _showSnackBar(errorMessage); // Error = merah
+      _showSnackBar(errorMessage);
     } catch (e) {
-      _showSnackBar('Gagal menyimpan profil: $e'); // Error = merah
+      _showSnackBar('Gagal menyimpan profil: $e');
     } finally {
       setState(() {
         _isLoading = false;
