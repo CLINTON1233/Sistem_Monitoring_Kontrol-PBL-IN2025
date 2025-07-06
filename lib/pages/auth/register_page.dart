@@ -86,6 +86,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final password = passwordController.text.trim();
 
     try {
+      // Cek username exists
       bool usernameExists = await _firestoreService.isUsernameExists(username);
       if (usernameExists) {
         _showSnackBar("Username sudah digunakan");
@@ -98,6 +99,7 @@ class _RegisterPageState extends State<RegisterPage> {
       UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
+      // Simpan ke Firestore
       await _firestoreService.saveUserData(
         userId: userCredential.user!.uid,
         username: username,

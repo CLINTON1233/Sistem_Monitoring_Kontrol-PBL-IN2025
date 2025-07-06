@@ -43,6 +43,18 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   bool _isPumpOn = false;
 
+  Color _getPumpStatusColor() {
+    if (_tdsValue < 300) {
+      return Colors.red; // Nutrisi sangat rendah
+    } else if (_tdsValue < 700) {
+      return Colors.orange; // Nutrisi rendah
+    } else if (_tdsValue < 900) {
+      return Colors.green; // Nutrisi optimal
+    } else {
+      return Colors.blue; // Nutrisi tinggi
+    }
+  }
+
   // Chart data
   List<FlSpot> _tempSpots = [];
   List<String> _timeLabels = [];
@@ -53,6 +65,18 @@ class _HomePageState extends State<HomePage> {
   double _waterHeight = 0.0;
   double _temperature = 0.0;
   double _humidity = 0.0;
+
+  String _getPumpStatusText() {
+    if (_tdsValue < 300) {
+      return 'Pompa sedang menyalurkan nutrisi dengan cepat';
+    } else if (_tdsValue < 700) {
+      return 'Pompa sedang menyalurkan nutrisi';
+    } else if (_tdsValue < 900) {
+      return 'Pompa bekerja dengan lambat';
+    } else {
+      return 'Pompa dalam keadaan standby';
+    }
+  }
 
   // Variabel untuk data user session
   String _username = 'Loading...';
@@ -237,6 +261,7 @@ class _HomePageState extends State<HomePage> {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
+        // Coba ambil dari Firestore dulu
         Map<String, dynamic>? userData = await _firestoreService.getUserData(
           currentUser.uid,
         );
@@ -247,10 +272,23 @@ class _HomePageState extends State<HomePage> {
             _email = userData['email'] ?? currentUser.email ?? 'No Email';
           });
         } else {
+          // Jika tidak ada di Firestore, coba ambil dari Firebase Auth
           setState(() {
-            _username = currentUser.displayName ?? 'User';
+            _username =
+                currentUser.displayName ??
+                currentUser.email?.split('@').first ??
+                'User';
             _email = currentUser.email ?? 'No Email';
           });
+
+          // Simpan ke Firestore untuk next time
+          if (currentUser.email != null) {
+            await _firestoreService.saveUserData(
+              userId: currentUser.uid,
+              username: _username,
+              email: _email,
+            );
+          }
         }
       }
     } catch (e) {
@@ -260,6 +298,12 @@ class _HomePageState extends State<HomePage> {
         _email = 'No Email';
       });
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadUserData();
   }
 
   void _setCurrentDate() {
@@ -560,6 +604,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 18),
 
               // Main Nutrient Level Card
+              // Replace the "Main Nutrient Level Card" section with this code:
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
@@ -577,145 +622,6 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Pump Speed Control
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Header dengan icon dan label
-                          Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.power_settings_new,
-                                  color: Colors.blue,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Kontrol Pompa',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    Text(
-                                      _isPumpOn ? 'Pompa Aktif' : 'Pompa Mati',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12,
-                                        color:
-                                            _isPumpOn
-                                                ? Colors.green
-                                                : Colors.grey[600],
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Toggle Switch
-                              Transform.scale(
-                                scale: 0.8,
-                                child: Switch(
-                                  value: _isPumpOn,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _isPumpOn = value;
-                                    });
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          _isPumpOn
-                                              ? 'Pompa diaktifkan'
-                                              : 'Pompa dimatikan',
-                                        ),
-                                        backgroundColor:
-                                            _isPumpOn
-                                                ? Colors.green
-                                                : Colors.orange,
-                                        behavior: SnackBarBehavior.floating,
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  },
-                                  activeColor: Colors.white,
-                                  activeTrackColor: Colors.green,
-                                  inactiveThumbColor: Colors.white,
-                                  inactiveTrackColor: Colors.grey[300],
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Custom Slider
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color:
-                                  _isPumpOn
-                                      ? Colors.green.withOpacity(0.1)
-                                      : Colors.grey.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _isPumpOn ? Colors.green : Colors.grey,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _isPumpOn
-                                        ? 'Pompa sedang beroperasi untuk menyalurkan nutrisi'
-                                        : 'Pompa dalam keadaan mati',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      color:
-                                          _isPumpOn
-                                              ? Colors.green[700]
-                                              : Colors.grey[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
                     // Icon and Value Row
                     Row(
                       children: [
@@ -802,9 +708,23 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+
+                    // Simple Pump Status Text
+                    Center(
+                      child: Text(
+                        _getPumpStatusText(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
+
+              // Keep this helper method in your _HomePageState class:
               const SizedBox(height: 24),
 
               // Sensor Cards

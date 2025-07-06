@@ -123,6 +123,7 @@ class _LoginPageState extends State<LoginPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
+
                             onPressed: () async {
                               final email = emailController.text.trim();
                               final password = passwordController.text.trim();
@@ -135,12 +136,12 @@ class _LoginPageState extends State<LoginPage> {
                               }
 
                               try {
-                                // UserCredential userCredential =
-                                //     await FirebaseAuth.instance
-                                //         .signInWithEmailAndPassword(
-                                //           email: email,
-                                //           password: password,
-                                //         );
+                                UserCredential userCredential =
+                                    await FirebaseAuth.instance
+                                        .signInWithEmailAndPassword(
+                                          email: email,
+                                          password: password,
+                                        );
 
                                 _showCustomSnackBar(
                                   "Login berhasil!",
