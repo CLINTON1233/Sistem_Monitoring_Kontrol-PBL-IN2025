@@ -1,9 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:sistem_monitoring_kontrol/pages/about_us/about_us_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/auth/login_page.dart';
 import 'package:sistem_monitoring_kontrol/pages/education/education_page.dart';
@@ -18,6 +15,7 @@ import 'package:sistem_monitoring_kontrol/services/weather_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'dart:async';
 import 'package:sistem_monitoring_kontrol/utils/datetime_extensions.dart';
 
 class HomePage extends StatefulWidget {
@@ -42,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   bool isSwitched = false;
   int _currentIndex = 0;
   bool _isPumpOn = false;
+  bool _isFirebaseConnected = false;
 
   Color _getPumpStatusColor() {
     if (_tdsValue < 300) {
@@ -84,9 +83,11 @@ class _HomePageState extends State<HomePage> {
   String _currentDate = '';
   String _currentDay = '';
 
-  // MQTT Client
-  late MqttServerClient _mqttClient;
-  bool _isMqttConnected = false;
+  // Database reference for sensor data
+  late DatabaseReference _sensorRef;
+  late DatabaseReference _controlRef;
+  late StreamSubscription<DatabaseEvent> _sensorSubscription;
+  late StreamSubscription<DatabaseEvent> _controlSubscription;
 
   @override
   void initState() {
@@ -95,75 +96,64 @@ class _HomePageState extends State<HomePage> {
     _loadUserData();
     _setCurrentDate();
     _loadLocationAndWeather();
-    _connectToMqtt();
   }
 
   Future<void> _initializeFirebase() async {
     try {
       await Firebase.initializeApp();
-      _databaseRef = FirebaseDatabase.instance.ref('sensor_readings');
+      _databaseRef = FirebaseDatabase.instance.ref();
+      _sensorRef = FirebaseDatabase.instance.ref('HQ/SENSOR');
+      _controlRef = FirebaseDatabase.instance.ref('HQ/CONTROL');
+
+      // Setup listeners
+      _setupFirebaseListeners();
+
       setState(() {
         _isFirebaseInitialized = true;
+        _isFirebaseConnected = true;
       });
       print('Firebase initialized successfully');
     } catch (e) {
       print('Error initializing Firebase: $e');
+      setState(() {
+        _isFirebaseConnected = false;
+      });
     }
   }
 
-  Future<void> _connectToMqtt() async {
-    _mqttClient = MqttServerClient(
-      'broker.hivemq.com',
-      'flutter_client_${DateTime.now().millisecondsSinceEpoch}',
+  void _setupFirebaseListeners() {
+    _sensorSubscription = _sensorRef.onValue.listen(
+      (DatabaseEvent event) {
+        final data = event.snapshot.value as Map<dynamic, dynamic>?;
+        if (data != null) {
+          _handleSensorData(data);
+        }
+      },
+      onError: (error) {
+        print('Error listening to sensor data: $error');
+        setState(() {
+          _isFirebaseConnected = false;
+        });
+        // Attempt to reconnect after delay
+        Future.delayed(Duration(seconds: 5), _initializeFirebase);
+      },
     );
-    _mqttClient.port = 1883;
-    _mqttClient.keepAlivePeriod = 60;
-    _mqttClient.onDisconnected = _onMqttDisconnected;
-    _mqttClient.logging(on: false);
 
-    final connMess = MqttConnectMessage()
-        .withClientIdentifier('flutter_client')
-        .startClean()
-        .keepAliveFor(60);
-
-    _mqttClient.connectionMessage = connMess;
-
-    try {
-      await _mqttClient.connect();
-      setState(() {
-        _isMqttConnected = true;
-      });
-
-      _mqttClient.subscribe('hidroponik/data', MqttQos.atMostOnce);
-      _mqttClient.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
-        final MqttPublishMessage recMess = c[0].payload as MqttPublishMessage;
-        final String payload = MqttPublishPayload.bytesToStringAsString(
-          recMess.payload.message,
-        );
-        _handleSensorData(payload);
-      });
-    } catch (e) {
-      print('MQTT Connection Exception: $e');
-      _mqttClient.disconnect();
-      setState(() {
-        _isMqttConnected = false;
-      });
-    }
+    _controlSubscription = _controlRef.onValue.listen(
+      (DatabaseEvent event) {
+        final data = event.snapshot.value as Map<dynamic, dynamic>?;
+        if (data != null) {
+          // Handle control data if needed
+        }
+      },
+      onError: (error) {
+        print('Error listening to control data: $error');
+      },
+    );
   }
 
-  void _onMqttDisconnected() {
-    print('MQTT Disconnected');
-    setState(() {
-      _isMqttConnected = false;
-    });
-    // Reconnect after 5 seconds
-    Future.delayed(Duration(seconds: 5), _connectToMqtt);
-  }
-
-  void _handleSensorData(String message) {
+  void _handleSensorData(Map<dynamic, dynamic> data) {
     try {
-      final data = json.decode(message);
-
       double parseValue(dynamic value) {
         final parsed = double.tryParse(value.toString()) ?? 0.0;
         if (parsed < 0 || parsed > 1000) return 0.0;
@@ -171,26 +161,61 @@ class _HomePageState extends State<HomePage> {
       }
 
       setState(() {
-        _phValue = parseValue(data['pH']);
+        _phValue = parseValue(data['ph']);
         _tdsValue = parseValue(data['tds']);
         _waterHeight = parseValue(data['tinggi_air']);
         _temperature = parseValue(data['suhu']);
         _humidity = parseValue(data['kelembaban']);
-        _updateChartData(); // Tambahkan ini
+        _updateChartData();
+        _isFirebaseConnected = true;
       });
 
-      // Kirim ke Firebase jika sudah terinisialisasi
-      if (_isFirebaseInitialized) {
-        _sendToFirebase(data);
-      } else {
-        print('Firebase not initialized, skipping Firebase upload');
-      }
+      // Kirim data statistik mingguan
+      _sendWeeklyStatsToFirebase();
 
       print(
         'Data sensor diterima: pH=$_phValue, TDS=$_tdsValue, Tinggi Air=$_waterHeight, Suhu=$_temperature, Kelembaban=$_humidity',
       );
     } catch (e) {
       print('Error parsing sensor data: $e');
+    }
+  }
+
+  Future<void> _sendWeeklyStatsToFirebase() async {
+    try {
+      final now = DateTime.now();
+      final weekKey = '${now.year}-${now.weekOfYear}';
+      final dayOfWeek = now.weekday - 1; // 0-6 (Senin-Minggu)
+      final dayNames = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+
+      final statsRef = FirebaseDatabase.instance.ref(
+        'statistics/$weekKey/days/$dayOfWeek',
+      );
+
+      // Get current data first to preserve existing values
+      final snapshot = await statsRef.get();
+      Map<String, dynamic> currentData = {};
+
+      if (snapshot.exists) {
+        currentData = Map<String, dynamic>.from(snapshot.value as Map);
+      }
+
+      // Update or create the day's statistics
+      await statsRef.update({
+        'day_name': dayNames[dayOfWeek],
+        'temperature': _temperature,
+        'humidity': _humidity,
+        'ph': _phValue,
+        'tds': _tdsValue,
+        'water_level': _waterHeight,
+        'last_updated': ServerValue.timestamp,
+        // Preserve existing values if they exist
+        ...currentData,
+      });
+
+      print('Data statistik mingguan berhasil dikirim ke Firebase');
+    } catch (e) {
+      print('Gagal mengirim statistik mingguan ke Firebase: $e');
     }
   }
 
@@ -210,51 +235,6 @@ class _HomePageState extends State<HomePage> {
 
     DateTime now = DateTime.now();
     _timeLabels.add('${now.hour}:${now.minute.toString().padLeft(2, '0')}');
-  }
-
-  Future<void> _sendToFirebase(Map<String, dynamic> sensorData) async {
-    try {
-      // Current date information
-      final now = DateTime.now();
-      final dayOfWeek = now.weekday; // 1=Monday, 7=Sunday
-      final weekKey =
-          '${now.year}-${now.weekOfYear}'; // Unique key for each week
-
-      // Main sensor data
-      final dataToSend = {
-        'pH': _phValue,
-        'tds': _tdsValue,
-        'water_level': _waterHeight,
-        'temperature': _temperature,
-        'humidity': _humidity,
-        'timestamp': ServerValue.timestamp,
-        'device': 'home_app',
-      };
-
-      // Send to main sensor readings
-      await _databaseRef.push().set(dataToSend);
-
-      // Send to weekly statistics
-      final weeklyStatsRef = FirebaseDatabase.instance.ref(
-        'statistics/$weekKey/days/$dayOfWeek',
-      );
-
-      // Update or create the day's statistics
-      await weeklyStatsRef.update({
-        'day_name':
-            ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][dayOfWeek - 1],
-        'temperature': _temperature,
-        'humidity': _humidity,
-        'ph': _phValue,
-        'tds': _tdsValue,
-        'water_level': _waterHeight,
-        'last_updated': ServerValue.timestamp,
-      });
-
-      print('Data berhasil dikirim ke Firebase (readings & statistics)');
-    } catch (e) {
-      print('Gagal mengirim ke Firebase: $e');
-    }
   }
 
   Future<void> _loadUserData() async {
@@ -445,7 +425,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _mqttClient.disconnect();
+    _sensorSubscription.cancel();
+    _controlSubscription.cancel();
     super.dispose();
   }
 
@@ -571,13 +552,13 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
                             const SizedBox(width: 12),
-                            // MQTT Connection Indicator
+                            // Firebase Connection Indicator
                             Container(
                               width: 8,
                               height: 8,
                               decoration: BoxDecoration(
                                 color:
-                                    _isMqttConnected
+                                    _isFirebaseConnected
                                         ? Colors.green
                                         : Colors.red,
                                 shape: BoxShape.circle,
@@ -585,11 +566,11 @@ class _HomePageState extends State<HomePage> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              _isMqttConnected ? 'Online' : 'Offline',
+                              _isFirebaseConnected ? 'Online' : 'Offline',
                               style: GoogleFonts.poppins(
                                 fontSize: 11,
                                 color:
-                                    _isMqttConnected
+                                    _isFirebaseConnected
                                         ? Colors.green
                                         : Colors.red,
                               ),
@@ -604,7 +585,6 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 18),
 
               // Main Nutrient Level Card
-              // Replace the "Main Nutrient Level Card" section with this code:
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
@@ -724,7 +704,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // Keep this helper method in your _HomePageState class:
               const SizedBox(height: 24),
 
               // Sensor Cards
@@ -798,7 +777,6 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
 
               // Chart Card
-              // Chart Card
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -847,7 +825,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           decoration: BoxDecoration(
                             color:
-                                _isMqttConnected
+                                _isFirebaseConnected
                                     ? Colors.green.withOpacity(0.1)
                                     : Colors.red.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
@@ -860,7 +838,7 @@ class _HomePageState extends State<HomePage> {
                                 height: 6,
                                 decoration: BoxDecoration(
                                   color:
-                                      _isMqttConnected
+                                      _isFirebaseConnected
                                           ? Colors.green
                                           : Colors.red,
                                   shape: BoxShape.circle,
@@ -868,11 +846,11 @@ class _HomePageState extends State<HomePage> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                _isMqttConnected ? 'Live' : 'Offline',
+                                _isFirebaseConnected ? 'Live' : 'Offline',
                                 style: GoogleFonts.poppins(
                                   fontSize: 12,
                                   color:
-                                      _isMqttConnected
+                                      _isFirebaseConnected
                                           ? Colors.green
                                           : Colors.red,
                                   fontWeight: FontWeight.w500,

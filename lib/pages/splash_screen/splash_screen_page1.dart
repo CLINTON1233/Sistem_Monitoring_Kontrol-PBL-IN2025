@@ -25,7 +25,7 @@ class _SplashScreenPage1State extends State<SplashScreenPage1> {
           // Gambar sebagai latar belakang
           Positioned.fill(
             child: Image.asset(
-              'assets/splashscreen1.jpg', // Ganti sesuai nama file Anda
+              'assets/splashscreen.jpg', // Ganti sesuai nama file Anda
               fit: BoxFit.cover,
             ),
           ),

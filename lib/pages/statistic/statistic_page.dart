@@ -12,6 +12,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sistem_monitoring_kontrol/services/realtime_auth_services.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:sistem_monitoring_kontrol/utils/datetime_extensions.dart';
+import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
 
 class StatisticPage extends StatefulWidget {
   const StatisticPage({super.key});
@@ -32,26 +34,123 @@ class _StatisticPageState extends State<StatisticPage> {
 
   List<Map<String, dynamic>> _weeklyData = [];
   bool _isLoading = true;
+  bool _isFirebaseConnected = false;
+
+  // Firebase Database References
+  late DatabaseReference _statsRef;
+  late DatabaseReference _sensorRef;
+  late StreamSubscription<DatabaseEvent> _statsSubscription;
+  late StreamSubscription<DatabaseEvent> _sensorSubscription;
+
+  // Current Sensor Values
+  double _currentTemp = 0.0;
+  double _currentHumidity = 0.0;
+  double _currentPh = 0.0;
+  double _currentTds = 0.0;
+  double _currentWaterLevel = 0.0;
 
   @override
   void initState() {
     super.initState();
+    _initializeFirebase();
     _loadUserData();
-    _loadWeeklyStats();
   }
 
-  Future<void> _loadWeeklyStats() async {
+  @override
+  void dispose() {
+    _statsSubscription.cancel();
+    _sensorSubscription.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initializeFirebase() async {
     try {
-      setState(() => _isLoading = true);
+      await Firebase.initializeApp();
+      _setupDatabaseListeners();
+      setState(() {
+        _isFirebaseConnected = true;
+      });
+    } catch (e) {
+      print('Error initializing Firebase: $e');
+      setState(() {
+        _isFirebaseConnected = false;
+      });
+    }
+  }
 
-      final now = DateTime.now();
-      final weekKey = '${now.year}-${now.weekOfYear}';
-      final statsRef = FirebaseDatabase.instance.ref(
-        'statistics/$weekKey/days',
-      );
+  void _setupDatabaseListeners() {
+    final now = DateTime.now();
+    final weekKey = '${now.year}-${now.weekOfYear}';
 
-      final snapshot = await statsRef.get();
+    // Listen to statistics data
+    _statsRef = FirebaseDatabase.instance.ref('statistics/$weekKey/days');
+    _statsSubscription = _statsRef.onValue.listen(
+      (DatabaseEvent event) {
+        _handleStatsUpdate(event.snapshot);
+      },
+      onError: (error) {
+        print('Error listening to stats: $error');
+        setState(() {
+          _isFirebaseConnected = false;
+        });
+        Future.delayed(Duration(seconds: 5), _initializeFirebase);
+      },
+    );
 
+    // Listen to real-time sensor data from HQ/SENSOR
+    _sensorRef = FirebaseDatabase.instance.ref('HQ/SENSOR');
+    _sensorSubscription = _sensorRef.onValue.listen(
+      (DatabaseEvent event) {
+        _handleSensorUpdate(event.snapshot);
+      },
+      onError: (error) {
+        print('Error listening to sensor data: $error');
+      },
+    );
+  }
+
+  void _handleSensorUpdate(DataSnapshot snapshot) {
+    if (snapshot.exists) {
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+      print('Sensor data: $data'); // Debug
+
+      setState(() {
+        _currentTemp = data['suhu']?.toDouble() ?? 0.0;
+        _currentHumidity = data['kelembaban']?.toDouble() ?? 0.0;
+        _currentPh = data['ph']?.toDouble() ?? 0.0;
+        _currentTds = data['tds']?.toDouble() ?? 0.0;
+        _currentWaterLevel = data['tinggi_air']?.toDouble() ?? 0.0;
+      });
+
+      _updateDailyStatistics();
+    }
+  }
+
+  void _updateDailyStatistics() {
+    final now = DateTime.now();
+    final weekKey = '${now.year}-${now.weekOfYear}';
+    final dayIndex = now.weekday - 1; // 0 for Monday, 6 for Sunday
+    final dayName = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][dayIndex];
+
+    final updates = {
+      'temperature': _currentTemp,
+      'humidity': _currentHumidity,
+      'ph': _currentPh,
+      'tds': _currentTds,
+      'water_level': _currentWaterLevel,
+      'day_name': dayName,
+      'last_updated': ServerValue.timestamp,
+    };
+
+    FirebaseDatabase.instance
+        .ref('statistics/$weekKey/days/$dayIndex')
+        .update(updates)
+        .catchError((error) => print('Error updating stats: $error'));
+  }
+
+  void _handleStatsUpdate(DataSnapshot snapshot) {
+    print('Weekly data received: ${snapshot.value}'); // Debug
+    try {
       if (snapshot.exists) {
         final data = Map<String, dynamic>.from(snapshot.value as Map);
         _weeklyData =
@@ -66,28 +165,62 @@ class _StatisticPageState extends State<StatisticPage> {
               };
             }).toList();
 
+        print('Processed weekly data: $_weeklyData'); // Debug
+
         // Sort by day (Monday to Sunday)
         _weeklyData.sort((a, b) {
           final days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
           return days.indexOf(a['day']).compareTo(days.indexOf(b['day']));
         });
       } else {
-        _weeklyData = []; // No data available
+        print('No weekly data available'); // Debug
+        _weeklyData = [];
+        _initializeEmptyStats();
       }
 
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _isFirebaseConnected = true;
+      });
     } catch (e) {
-      print('Error loading weekly stats: $e');
-      setState(() => _isLoading = false);
-      _weeklyData = []; // Fallback to empty data
+      print('Error processing stats: $e');
+      setState(() {
+        _isLoading = false;
+        _weeklyData = [];
+      });
     }
+  }
+
+  void _initializeEmptyStats() {
+    final now = DateTime.now();
+    final weekKey = '${now.year}-${now.weekOfYear}';
+    final days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+
+    final updates = <String, dynamic>{};
+
+    for (int i = 0; i < days.length; i++) {
+      updates['$i'] = {
+        'day_name': days[i],
+        'temperature': _currentTemp,
+        'humidity': _currentHumidity,
+        'ph': _currentPh,
+        'tds': _currentTds,
+        'water_level': _currentWaterLevel,
+        'last_updated': ServerValue.timestamp,
+      };
+    }
+
+    FirebaseDatabase.instance
+        .ref('statistics/$weekKey/days')
+        .update(updates)
+        .then((_) => print('Initialized stats for week $weekKey'))
+        .catchError((error) => print('Error initializing stats: $error'));
   }
 
   Future<void> _loadUserData() async {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // Coba ambil dari Realtime Database
         Map<String, dynamic>? userData = await _realtimeAuthService.getUserData(
           currentUser.uid,
         );
@@ -98,7 +231,6 @@ class _StatisticPageState extends State<StatisticPage> {
             _email = userData['email'] ?? currentUser.email ?? 'No Email';
           });
         } else {
-          // Jika tidak ada di Realtime DB, gunakan data dari Firebase Auth
           setState(() {
             _username =
                 currentUser.displayName ??
@@ -107,7 +239,6 @@ class _StatisticPageState extends State<StatisticPage> {
             _email = currentUser.email ?? 'No Email';
           });
 
-          // Simpan ke Realtime DB untuk next time
           if (currentUser.email != null) {
             await _realtimeAuthService.saveUserData(
               userId: currentUser.uid,
@@ -163,21 +294,40 @@ class _StatisticPageState extends State<StatisticPage> {
         backgroundColor: const Color(0xFF4B715A),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.menu, color: Colors.white, size: 24),
+          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
           onPressed: () {
-            _scaffoldKey.currentState?.openDrawer();
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => HomePage()),
+            );
           },
         ),
-        title: Text(
-          'Statistik',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min, // Biar width-nya pas dengan konten
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Statistik',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _isFirebaseConnected ? Colors.green : Colors.red,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ],
         ),
         centerTitle: true,
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -424,36 +574,36 @@ class _StatisticPageState extends State<StatisticPage> {
   }
 
   Widget _buildSensorSummaryCards() {
-    // Calculate averages
+    // Gunakan _weeklyData jika ada, jika tidak gunakan data realtime
     final tempAvg =
-        _weeklyData.isEmpty
-            ? 0.0
-            : _weeklyData.map((d) => d['temp']).reduce((a, b) => a + b) /
-                _weeklyData.length;
+        _weeklyData.isNotEmpty
+            ? _weeklyData.map((d) => d['temp']).reduce((a, b) => a + b) /
+                _weeklyData.length
+            : _currentTemp;
 
     final humidityAvg =
-        _weeklyData.isEmpty
-            ? 0.0
-            : _weeklyData.map((d) => d['humidity']).reduce((a, b) => a + b) /
-                _weeklyData.length;
+        _weeklyData.isNotEmpty
+            ? _weeklyData.map((d) => d['humidity']).reduce((a, b) => a + b) /
+                _weeklyData.length
+            : _currentHumidity;
 
     final phAvg =
-        _weeklyData.isEmpty
-            ? 0.0
-            : _weeklyData.map((d) => d['ph']).reduce((a, b) => a + b) /
-                _weeklyData.length;
+        _weeklyData.isNotEmpty
+            ? _weeklyData.map((d) => d['ph']).reduce((a, b) => a + b) /
+                _weeklyData.length
+            : _currentPh;
 
     final tdsAvg =
-        _weeklyData.isEmpty
-            ? 0.0
-            : _weeklyData.map((d) => d['tds']).reduce((a, b) => a + b) /
-                _weeklyData.length;
+        _weeklyData.isNotEmpty
+            ? _weeklyData.map((d) => d['tds']).reduce((a, b) => a + b) /
+                _weeklyData.length
+            : _currentTds;
 
     final waterAvg =
-        _weeklyData.isEmpty
-            ? 0.0
-            : _weeklyData.map((d) => d['water']).reduce((a, b) => a + b) /
-                _weeklyData.length;
+        _weeklyData.isNotEmpty
+            ? _weeklyData.map((d) => d['water']).reduce((a, b) => a + b) /
+                _weeklyData.length
+            : _currentWaterLevel;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,7 +774,7 @@ class _StatisticPageState extends State<StatisticPage> {
           'Suhu',
           _buildTemperatureChart(),
           '°C',
-          '27.1',
+          '${_currentTemp.toStringAsFixed(1)}',
           Colors.green,
         ),
         const SizedBox(height: 16),
@@ -632,19 +782,31 @@ class _StatisticPageState extends State<StatisticPage> {
           'Kelembaban',
           _buildHumidityChart(),
           '%',
-          '77.0',
+          '${_currentHumidity.toStringAsFixed(1)}',
           Colors.blue,
         ),
         const SizedBox(height: 16),
-        _buildChartCard('pH', _buildPHChart(), 'pH', '6.2', Colors.purple),
+        _buildChartCard(
+          'pH',
+          _buildPHChart(),
+          'pH',
+          '${_currentPh.toStringAsFixed(1)}',
+          Colors.purple,
+        ),
         const SizedBox(height: 16),
-        _buildChartCard('TDS', _buildTDSChart(), 'ppm', '845', Colors.teal),
+        _buildChartCard(
+          'TDS',
+          _buildTDSChart(),
+          'ppm',
+          '${_currentTds.toStringAsFixed(0)}',
+          Colors.teal,
+        ),
         const SizedBox(height: 16),
         _buildChartCard(
           'Ketinggian Air',
           _buildWaterLevelChart(),
-          '%',
-          '83.0',
+          'cm',
+          '${_currentWaterLevel.toStringAsFixed(1)}',
           Colors.indigo,
         ),
       ],
@@ -1182,7 +1344,6 @@ class _StatisticPageState extends State<StatisticPage> {
       backgroundColor: Colors.white,
       child: Column(
         children: [
-          // Drawer Header
           Container(
             height: 200,
             width: double.infinity,
@@ -1234,7 +1395,6 @@ class _StatisticPageState extends State<StatisticPage> {
             ),
           ),
           const SizedBox(height: 12),
-          // Menu Items
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -1261,7 +1421,6 @@ class _StatisticPageState extends State<StatisticPage> {
                     );
                   },
                 ),
-
                 _buildDrawerItem(
                   icon: Icons.show_chart,
                   title: 'Statistik',
@@ -1297,8 +1456,6 @@ class _StatisticPageState extends State<StatisticPage> {
               ],
             ),
           ),
-
-          // App Version
           Container(
             padding: const EdgeInsets.all(30),
             child: Text(
@@ -1311,7 +1468,6 @@ class _StatisticPageState extends State<StatisticPage> {
     );
   }
 
-  // Build Drawer Item
   Widget _buildDrawerItem({
     required IconData icon,
     required String title,
@@ -1355,18 +1511,6 @@ class _StatisticPageState extends State<StatisticPage> {
     );
   }
 
-  // Show SnackBar for demo purposes
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
   String _getInitials(String name) {
     if (name.isEmpty) return 'U';
     List<String> names = name.trim().split(' ');
@@ -1378,7 +1522,6 @@ class _StatisticPageState extends State<StatisticPage> {
     }
   }
 
-  // Show Logout Dialog
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -1421,19 +1564,25 @@ class _StatisticPageState extends State<StatisticPage> {
               ),
               onPressed: () async {
                 Navigator.of(context).pop();
-
                 try {
-                  // Logout dari Firebase Auth
                   await FirebaseAuth.instance.signOut();
-                  _showSnackBar('Logout Berhasil');
-
-                  // Navigasi ke login page
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Logout Berhasil'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (context) => LoginPage()),
                   );
                 } catch (e) {
-                  _showSnackBar('Error saat logout: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error saat logout: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
                 }
               },
             ),
