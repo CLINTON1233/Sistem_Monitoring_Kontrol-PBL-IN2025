@@ -30,6 +30,8 @@ class _MonitoringPageState extends State<MonitoringPage> {
   List<FlSpot> _tdsSpots = [];
   List<FlSpot> _phSpots = [];
   List<String> _timeLabels = [];
+  Timer? _chartUpdateTimer;
+  DateTime _lastUpdateTime = DateTime.now();
 
   // Firebase
   late DatabaseReference _sensorRef;
@@ -38,16 +40,26 @@ class _MonitoringPageState extends State<MonitoringPage> {
   bool _isFirebaseConnected = false;
   late StreamSubscription<DatabaseEvent> _sensorSubscription;
 
+  // Debouncing untuk notifikasi
+  Map<String, DateTime> _lastNotificationTimes = {};
+
+  // ScaffoldMessenger key
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   @override
   void initState() {
     super.initState();
     _initializeFirebase();
+    _chartUpdateTimer = Timer.periodic(Duration(seconds: 10), (timer) {
+      _updateChartData();
+    });
   }
 
   Future<void> _initializeFirebase() async {
     try {
       await Firebase.initializeApp();
-      _databaseRef = FirebaseDatabase.instance.ref('sensor_readings');
+      _databaseRef = FirebaseDatabase.instance.ref('RIWAYAT');
       _sensorRef = FirebaseDatabase.instance.ref('HQ/SENSOR');
 
       _setupFirebaseListeners();
@@ -78,7 +90,6 @@ class _MonitoringPageState extends State<MonitoringPage> {
         setState(() {
           _isFirebaseConnected = false;
         });
-        // Attempt to reconnect after delay
         Future.delayed(Duration(seconds: 5), _initializeFirebase);
       },
     );
@@ -88,14 +99,13 @@ class _MonitoringPageState extends State<MonitoringPage> {
     try {
       final now = DateTime.now();
       final weekKey = '${now.year}-${now.weekOfYear}';
-      final dayOfWeek = now.weekday - 1; // 0-6 (Senin-Minggu)
+      final dayOfWeek = now.weekday - 1;
       final dayNames = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
 
       final statsRef = FirebaseDatabase.instance.ref(
         'statistics/$weekKey/days/$dayOfWeek',
       );
 
-      // Get current data first to preserve existing values
       final snapshot = await statsRef.get();
       Map<String, dynamic> currentData = {};
 
@@ -103,7 +113,6 @@ class _MonitoringPageState extends State<MonitoringPage> {
         currentData = Map<String, dynamic>.from(snapshot.value as Map);
       }
 
-      // Update or create the day's statistics
       await statsRef.update({
         'day_name': dayNames[dayOfWeek],
         'temperature': _temperature,
@@ -112,7 +121,6 @@ class _MonitoringPageState extends State<MonitoringPage> {
         'tds': _tdsValue,
         'water_level': _waterHeight,
         'last_updated': ServerValue.timestamp,
-        // Preserve existing values if they exist
         ...currentData,
       });
 
@@ -126,82 +134,157 @@ class _MonitoringPageState extends State<MonitoringPage> {
     try {
       double parseValue(dynamic value) {
         final parsed = double.tryParse(value.toString()) ?? 0.0;
-        if (parsed < 0 || parsed > 1000) return 0.0;
+        if (parsed < 0) return 0.0;
         return parsed;
       }
 
       setState(() {
         _phValue = parseValue(data['ph']);
-        _tdsValue = parseValue(data['tds']);
-        _waterHeight = parseValue(data['tinggi_air']);
+        _tdsValue = parseValue(data['ppm'] ?? data['tds']);
+        _waterHeight = parseValue(data['tinggi_air'] ?? data['tinggi'] ?? 0.0);
         _temperature = parseValue(data['suhu']);
         _humidity = parseValue(data['kelembaban']);
         _updateChartData();
         _isFirebaseConnected = true;
       });
 
-      // Kirim data statistik mingguan
       _sendWeeklyStatsToFirebase();
-
-      print(
-        'Data diterima: pH=$_phValue, TDS=$_tdsValue, Air=$_waterHeight, Suhu=$_temperature, Kelembaban=$_humidity',
-      );
+      _checkAndSendNotifications();
     } catch (e) {
       print('Error parsing sensor data: $e');
     }
   }
 
-  Future<void> _sendToFirebase(Map<String, dynamic> sensorData) async {
-    try {
-      // Current date information
-      final now = DateTime.now();
-      final dayOfWeek = now.weekday;
-      final weekKey = '${now.year}-${now.weekOfYear}';
+  void _checkAndSendNotifications() async {
+    final now = DateTime.now();
+    final notificationsRef = FirebaseDatabase.instance.ref('notifications');
 
-      // Main sensor data
-      final dataToSend = {
-        'pH': _phValue,
-        'tds': _tdsValue,
-        'water_level': _waterHeight,
-        'temperature': _temperature,
-        'humidity': _humidity,
-        'timestamp': ServerValue.timestamp,
-        'device': 'monitoring_app', // Berbeda dengan home_app untuk tracking
-      };
-
-      // Send to main sensor readings
-      await _databaseRef.push().set(dataToSend);
-
-      // Send to weekly statistics
-      final weeklyStatsRef = FirebaseDatabase.instance.ref(
-        'statistics/$weekKey/days/$dayOfWeek',
+    void showSnackBar(String message, Color bgColor) {
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: GoogleFonts.poppins(color: Colors.white, fontSize: 14),
+          ),
+          backgroundColor: bgColor,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.only(
+            top: 10,
+            left: 10,
+            right: 10,
+            bottom: MediaQuery.of(context).size.height - 100,
+          ),
+          duration: Duration(seconds: 3),
+        ),
       );
+    }
 
-      // Get current data first to preserve existing values
-      final snapshot = await weeklyStatsRef.get();
-      Map<String, dynamic> currentData = {};
-
-      if (snapshot.exists) {
-        currentData = Map<String, dynamic>.from(snapshot.value as Map);
+    void sendNotification(
+      String type,
+      String status,
+      String message,
+      Color bgColor,
+    ) async {
+      if (_lastNotificationTimes.containsKey(type) &&
+          now.difference(_lastNotificationTimes[type]!).inMinutes < 10) {
+        return;
       }
 
-      // Update or create the day's statistics
-      await weeklyStatsRef.update({
-        'day_name':
-            ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][dayOfWeek - 1],
-        'temperature': _temperature,
-        'humidity': _humidity,
-        'ph': _phValue,
-        'tds': _tdsValue,
-        'water_level': _waterHeight,
-        'last_updated': ServerValue.timestamp,
-        // Preserve existing values if they exist
-        ...currentData,
+      await notificationsRef.push().set({
+        'timestamp': ServerValue.timestamp,
+        'type': type,
+        'status': status,
+        'message': message,
+        'isRead': false,
       });
 
-      print('Data berhasil dikirim ke Firebase (readings & statistics)');
-    } catch (e) {
-      print('Gagal mengirim ke Firebase: $e');
+      _lastNotificationTimes[type] = now;
+      showSnackBar(message, bgColor);
+    }
+
+    // pH (optimal untuk hidroponik: 5.5-6.5)
+    if (_phValue < 5.5) {
+      sendNotification(
+        'pH',
+        'Low',
+        'Nilai pH turun ke ${_phValue.toStringAsFixed(1)}. Tambahkan larutan pH up.',
+        Colors.orange,
+      );
+    } else if (_phValue > 6.5) {
+      sendNotification(
+        'pH',
+        'High',
+        'Nilai pH mencapai ${_phValue.toStringAsFixed(1)}. Tambahkan larutan pH down.',
+        Colors.red,
+      );
+    }
+
+    // TDS (optimal untuk hidroponik: 500-1000 ppm)
+    if (_tdsValue < 500) {
+      sendNotification(
+        'TDS',
+        'Low',
+        'Nilai TDS turun ke ${_tdsValue.toStringAsFixed(0)} ppm. Tambahkan nutrisi.',
+        Colors.orange,
+      );
+    } else if (_tdsValue > 1000) {
+      sendNotification(
+        'TDS',
+        'High',
+        'Nilai TDS mencapai ${_tdsValue.toStringAsFixed(0)} ppm. Kurangi nutrisi.',
+        Colors.red,
+      );
+    }
+
+    // Suhu (optimal untuk hidroponik: 20-28°C)
+    if (_temperature < 20) {
+      sendNotification(
+        'Temperature',
+        'Low',
+        'Suhu turun ke ${_temperature.toStringAsFixed(1)}°C. Tingkatkan suhu lingkungan.',
+        Colors.blue,
+      );
+    } else if (_temperature > 28) {
+      sendNotification(
+        'Temperature',
+        'High',
+        'Suhu mencapai ${_temperature.toStringAsFixed(1)}°C. Aktifkan ventilasi.',
+        Colors.red,
+      );
+    }
+
+    // Kelembaban (optimal untuk hidroponik: 50-70%)
+    if (_humidity < 50) {
+      sendNotification(
+        'Humidity',
+        'Low',
+        'Kelembaban turun ke ${_humidity.toStringAsFixed(0)}%. Tingkatkan kelembaban.',
+        Colors.blue,
+      );
+    } else if (_humidity > 70) {
+      sendNotification(
+        'Humidity',
+        'High',
+        'Kelembaban mencapai ${_humidity.toStringAsFixed(0)}%. Kurangi kelembaban.',
+        Colors.red,
+      );
+    }
+
+    // Ketinggian Air (optimal: 15-25 cm, sesuaikan dengan sistem)
+    if (_waterHeight < 15) {
+      sendNotification(
+        'WaterLevel',
+        'Low',
+        'Ketinggian air turun ke ${_waterHeight.toStringAsFixed(1)} cm. Isi ulang tandon air.',
+        Colors.cyan,
+      );
+    } else if (_waterHeight > 25) {
+      sendNotification(
+        'WaterLevel',
+        'High',
+        'Ketinggian air mencapai ${_waterHeight.toStringAsFixed(1)} cm. Kurangi volume air.',
+        Colors.red,
+      );
     }
   }
 
@@ -218,16 +301,26 @@ class _MonitoringPageState extends State<MonitoringPage> {
     }
 
     double newX = _tdsSpots.length.toDouble();
-    _tdsSpots.add(FlSpot(newX, _tdsValue));
-    _phSpots.add(FlSpot(newX, _phValue));
+    double newTds = _tdsValue;
+    double newPh = _phValue;
+    _tdsSpots.add(FlSpot(newX, newTds));
+    _phSpots.add(FlSpot(newX, newPh));
 
-    DateTime now = DateTime.now();
-    _timeLabels.add('${now.hour}:${now.minute.toString().padLeft(2, '0')}');
+    if (_timeLabels.isEmpty) {
+      _lastUpdateTime = DateTime.now();
+    }
+    _lastUpdateTime = _lastUpdateTime.add(Duration(seconds: 10));
+    _timeLabels.add(
+      '${_lastUpdateTime.hour.toString().padLeft(2, '0')}:${_lastUpdateTime.minute.toString().padLeft(2, '0')}:${_lastUpdateTime.second.toString().padLeft(2, '0')}',
+    );
+
+    setState(() {});
   }
 
   @override
   void dispose() {
     _sensorSubscription.cancel();
+    _chartUpdateTimer?.cancel();
     super.dispose();
   }
 
@@ -260,201 +353,196 @@ class _MonitoringPageState extends State<MonitoringPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF4B715A),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => HomePage()),
-            );
-          },
-        ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min, // Biar width-nya pas dengan konten
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Monitoring Real-Time',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _isFirebaseConnected ? Colors.green : Colors.red,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ],
-        ),
-        centerTitle: true,
-      ),
-
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return ScaffoldMessenger(
+      key: _scaffoldMessengerKey,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8F9FA),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF4B715A),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => HomePage()),
+              );
+            },
+          ),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // TDS Chart
-              _buildChart(
-                title: 'Grafik TDS',
-                value: '${_tdsValue.toStringAsFixed(0)} ppm',
-                spots: _tdsSpots,
-                maxY: 1000,
-                colors: [Color(0xff3b82f6), Color(0xff1d4ed8)],
-              ),
-              const SizedBox(height: 24),
-
-              // pH Chart
-              _buildChart(
-                title: 'Grafik pH',
-                value: _phValue.toStringAsFixed(1),
-                spots: _phSpots,
-                maxY: 14,
-                colors: [Color(0xffa855f7), Color(0xff7c3aed)],
-              ),
-              const SizedBox(height: 20),
-
-              // Sensor Readings
               Text(
-                'Pembacaan Sensor',
+                'Monitoring Real-Time',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  color: Colors.white,
+                  fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black87,
                 ),
               ),
-              const SizedBox(height: 16),
-
-              Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.thermostat,
-                          'Suhu',
-                          _temperature.toStringAsFixed(1),
-                          '°C',
-                          Colors.orange.shade600,
-                          'DHT11',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.water_drop_outlined,
-                          'Kelembaban',
-                          _humidity.toStringAsFixed(0),
-                          '%',
-                          Colors.blue.shade600,
-                          'DHT11',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.blur_circular,
-                          'pH',
-                          _phValue.toStringAsFixed(1),
-                          '',
-                          Colors.purple.shade600,
-                          'pH Sensor',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.scatter_plot_outlined,
-                          'TDS',
-                          _tdsValue.toStringAsFixed(0),
-                          'ppm',
-                          Colors.teal.shade600,
-                          'TDS Meter',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: MediaQuery.of(context).size.width * 0.9,
-                    child: _buildStatCard(
-                      Icons.waves,
-                      'Ketinggian Air',
-                      _waterHeight.toStringAsFixed(1),
-                      'cm',
-                      Colors.indigo.shade600,
-                      'Ultrasonic',
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 8),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _isFirebaseConnected ? Colors.green : Colors.red,
+                  shape: BoxShape.circle,
+                ),
               ),
             ],
           ),
+          centerTitle: true,
         ),
-      ),
-
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildChart(
+                  title: 'Grafik TDS',
+                  value: '${_tdsValue.toStringAsFixed(0)} ppm',
+                  spots: _tdsSpots,
+                  maxY: 1000,
+                  colors: [Color(0xff3b82f6), Color(0xff1d4ed8)],
+                ),
+                const SizedBox(height: 24),
+                _buildChart(
+                  title: 'Grafik pH',
+                  value: _phValue.toStringAsFixed(1),
+                  spots: _phSpots,
+                  maxY: 14,
+                  colors: [Color(0xffa855f7), Color(0xff7c3aed)],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Pembacaan Sensor',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatCard(
+                            Icons.thermostat,
+                            'Suhu',
+                            _temperature.toStringAsFixed(1),
+                            '°C',
+                            Colors.orange.shade600,
+                            'DHT11',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildStatCard(
+                            Icons.water_drop_outlined,
+                            'Kelembaban',
+                            _humidity.toStringAsFixed(0),
+                            '%',
+                            Colors.blue.shade600,
+                            'DHT11',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatCard(
+                            Icons.blur_circular,
+                            'pH',
+                            _phValue.toStringAsFixed(1),
+                            '',
+                            Colors.purple.shade600,
+                            'pH Sensor',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildStatCard(
+                            Icons.scatter_plot_outlined,
+                            'TDS',
+                            _tdsValue.toStringAsFixed(0),
+                            'ppm',
+                            Colors.teal.shade600,
+                            'TDS Meter',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: MediaQuery.of(context).size.width * 0.9,
+                      child: _buildStatCard(
+                        Icons.waves,
+                        'Ketinggian Air',
+                        _waterHeight.toStringAsFixed(1),
+                        'cm',
+                        Colors.indigo.shade600,
+                        'Ultrasonic',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          currentIndex: _currentIndex,
-          onTap: _onBottomNavTap,
-          selectedItemColor: Colors.green,
-          unselectedItemColor: Colors.grey[400],
-          backgroundColor: Colors.white,
-          elevation: 0,
-          selectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
           ),
-          unselectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Beranda',
+        ),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            currentIndex: _currentIndex,
+            onTap: _onBottomNavTap,
+            selectedItemColor: Colors.green,
+            unselectedItemColor: Colors.grey[400],
+            backgroundColor: Colors.white,
+            elevation: 0,
+            selectedLabelStyle: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Monitoring',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment_outlined),
-              activeIcon: Icon(Icons.assignment),
-              label: 'Panduan',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outlined),
-              activeIcon: Icon(Icons.person),
-              label: 'Profil',
-            ),
-          ],
+            unselectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home),
+                label: 'Beranda',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart_outlined),
+                activeIcon: Icon(Icons.bar_chart),
+                label: 'Monitoring',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.assignment_outlined),
+                activeIcon: Icon(Icons.assignment),
+                label: 'Panduan',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_outlined),
+                activeIcon: Icon(Icons.person),
+                label: 'Profil',
+              ),
+            ],
+          ),
         ),
       ),
     );

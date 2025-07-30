@@ -51,12 +51,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBTem5bWeY22KqdfiuBrjzr4e5g6qg5UFM',
-    appId: '1:455814807543:android:11059e0e4ca7f8fd3b78f2',
-    messagingSenderId: '455814807543',
-    projectId: 'grow-iot-8fba8',
-    databaseURL: 'https://grow-iot-8fba8-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'grow-iot-8fba8.firebasestorage.app',
+    apiKey: 'AIzaSyD4LcrGow9SnbGHe1aM8YWvllca2NUAAoY',
+    appId: '1:1008179913372:android:5b90f18f38364fdf544359',
+    messagingSenderId: '1008179913372',
+    projectId: 'hqchulo',
+    databaseURL: 'https://hqchulo-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'hqchulo.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(

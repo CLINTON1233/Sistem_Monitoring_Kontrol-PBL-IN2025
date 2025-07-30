@@ -115,11 +115,12 @@ class _StatisticPageState extends State<StatisticPage> {
       print('Sensor data: $data'); // Debug
 
       setState(() {
-        _currentTemp = data['suhu']?.toDouble() ?? 0.0;
-        _currentHumidity = data['kelembaban']?.toDouble() ?? 0.0;
-        _currentPh = data['ph']?.toDouble() ?? 0.0;
-        _currentTds = data['tds']?.toDouble() ?? 0.0;
-        _currentWaterLevel = data['tinggi_air']?.toDouble() ?? 0.0;
+        _currentTemp = (data['suhu'] ?? 0.0).toDouble();
+        _currentHumidity = (data['kelembaban'] ?? 0.0).toDouble();
+        _currentPh = (data['ph'] ?? 0.0).toDouble();
+        _currentTds = (data['ppm'] ?? data['tds'] ?? 0.0).toDouble();
+        _currentWaterLevel =
+            (data['tinggi_air'] ?? data['tinggi'] ?? 0.0).toDouble();
       });
 
       _updateDailyStatistics();
@@ -157,11 +158,11 @@ class _StatisticPageState extends State<StatisticPage> {
             data.entries.map((entry) {
               return {
                 'day': entry.value['day_name'],
-                'temp': entry.value['temperature']?.toDouble() ?? 0.0,
-                'humidity': entry.value['humidity']?.toDouble() ?? 0.0,
-                'ph': entry.value['ph']?.toDouble() ?? 0.0,
-                'tds': entry.value['tds']?.toDouble() ?? 0.0,
-                'water': entry.value['water_level']?.toDouble() ?? 0.0,
+                'temp': (entry.value['temperature'] ?? 0.0).toDouble(),
+                'humidity': (entry.value['humidity'] ?? 0.0).toDouble(),
+                'ph': (entry.value['ph'] ?? 0.0).toDouble(),
+                'tds': (entry.value['tds'] ?? 0.0).toDouble(),
+                'water': (entry.value['water_level'] ?? 0.0).toDouble(),
               };
             }).toList();
 
@@ -303,7 +304,7 @@ class _StatisticPageState extends State<StatisticPage> {
           },
         ),
         title: Row(
-          mainAxisSize: MainAxisSize.min, // Biar width-nya pas dengan konten
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
@@ -327,25 +328,17 @@ class _StatisticPageState extends State<StatisticPage> {
         ),
         centerTitle: true,
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Info
             _buildHeaderInfo(),
             const SizedBox(height: 10),
-
-            // Growth Progress Chart
             _buildGrowthProgressCard(),
             const SizedBox(height: 24),
-
-            // Sensor Data Summary
             _buildSensorSummaryCards(),
             const SizedBox(height: 20),
-
-            // Sensor Charts
             _buildSensorCharts(),
           ],
         ),
@@ -423,11 +416,7 @@ class _StatisticPageState extends State<StatisticPage> {
               color: const Color(0xFF4B715A).withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.eco,
-              color: const Color(0xFF4B715A),
-              size: 32,
-            ),
+            child: const Icon(Icons.eco, color: Color(0xFF4B715A), size: 32),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -574,7 +563,6 @@ class _StatisticPageState extends State<StatisticPage> {
   }
 
   Widget _buildSensorSummaryCards() {
-    // Gunakan _weeklyData jika ada, jika tidak gunakan data realtime
     final tempAvg =
         _weeklyData.isNotEmpty
             ? _weeklyData.map((d) => d['temp']).reduce((a, b) => a + b) /
@@ -840,7 +828,7 @@ class _StatisticPageState extends State<StatisticPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                title,
+                '$title dari Hari ke Hari',
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -854,6 +842,44 @@ class _StatisticPageState extends State<StatisticPage> {
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: color,
+                  ),
+                ),
+              if (!_isLoading)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        _isFirebaseConnected
+                            ? Colors.green.withOpacity(0.1)
+                            : Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color:
+                              _isFirebaseConnected ? Colors.green : Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isFirebaseConnected ? 'Live' : 'Offline',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color:
+                              _isFirebaseConnected ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -886,7 +912,7 @@ class _StatisticPageState extends State<StatisticPage> {
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: 120,
+            height: 180,
             child:
                 _isLoading
                     ? Center(child: CircularProgressIndicator(color: color))
@@ -909,17 +935,57 @@ class _StatisticPageState extends State<StatisticPage> {
       LineChartData(
         gridData: FlGridData(
           show: true,
-          drawVerticalLine: false,
-          horizontalInterval: 5,
+          drawVerticalLine: true,
+          drawHorizontalLine: true,
+          horizontalInterval: 10,
+          verticalInterval: 1,
           getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
           },
         ),
         titlesData: FlTitlesData(
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                int index = value.toInt();
+                if (index >= 0 && index < _weeklyData.length) {
+                  return Text(
+                    _weeklyData[index]['day'],
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  );
+                }
+                return const Text('');
+              },
+            ),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 35,
+              interval: 10,
               getTitlesWidget: (value, meta) {
                 return Text(
                   '${value.toInt()}°C',
@@ -929,26 +995,7 @@ class _StatisticPageState extends State<StatisticPage> {
                   ),
                 );
               },
-            ),
-          ),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                int index = value.toInt();
-                if (index >= 0 && index < _weeklyData.length) {
-                  return Text(
-                    _weeklyData[index]['day'],
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      color: Colors.grey[600],
-                    ),
-                  );
-                }
-                return const Text('');
-              },
+              reservedSize: 42,
             ),
           ),
         ),
@@ -963,30 +1010,74 @@ class _StatisticPageState extends State<StatisticPage> {
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.green,
+            gradient: const LinearGradient(
+              colors: [Color(0xff4ade80), Color(0xff22c55e)],
+            ),
             barWidth: 3,
+            isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, barData, index) {
                 if (index == _weeklyData.length - 1) {
                   return FlDotCirclePainter(
                     radius: 6,
-                    color: Colors.green,
+                    color: Colors.white,
                     strokeWidth: 3,
-                    strokeColor: Colors.white,
+                    strokeColor: const Color(0xff22c55e),
                   );
                 }
-                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                return FlDotCirclePainter(
+                  radius: 3,
+                  color: const Color(0xff22c55e),
+                );
               },
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.green.withOpacity(0.1),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xff4ade80).withOpacity(0.4),
+                  const Color(0xff22c55e).withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
         ],
-        minY: 20,
-        maxY: 35,
+        minX: 0,
+        maxX: _weeklyData.isNotEmpty ? _weeklyData.length - 1 : 0,
+        minY: 0,
+        maxY: 50,
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (touchedSpot) => Colors.black87,
+            tooltipRoundedRadius: 8,
+            tooltipPadding: const EdgeInsets.all(8),
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots
+                  .map((barSpot) {
+                    int index = barSpot.x.toInt();
+                    if (index >= 0 && index < _weeklyData.length) {
+                      return LineTooltipItem(
+                        '${_weeklyData[index]['day']}\n${barSpot.y.toStringAsFixed(1)}°C',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }
+                    return null;
+                  })
+                  .where((item) => item != null)
+                  .cast<LineTooltipItem>()
+                  .toList();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -996,17 +1087,57 @@ class _StatisticPageState extends State<StatisticPage> {
       LineChartData(
         gridData: FlGridData(
           show: true,
-          drawVerticalLine: false,
+          drawVerticalLine: true,
+          drawHorizontalLine: true,
           horizontalInterval: 10,
+          verticalInterval: 1,
           getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
           },
         ),
         titlesData: FlTitlesData(
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                int index = value.toInt();
+                if (index >= 0 && index < _weeklyData.length) {
+                  return Text(
+                    _weeklyData[index]['day'],
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  );
+                }
+                return const Text('');
+              },
+            ),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 35,
+              interval: 10,
               getTitlesWidget: (value, meta) {
                 return Text(
                   '${value.toInt()}%',
@@ -1016,26 +1147,7 @@ class _StatisticPageState extends State<StatisticPage> {
                   ),
                 );
               },
-            ),
-          ),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                int index = value.toInt();
-                if (index >= 0 && index < _weeklyData.length) {
-                  return Text(
-                    _weeklyData[index]['day'],
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      color: Colors.grey[600],
-                    ),
-                  );
-                }
-                return const Text('');
-              },
+              reservedSize: 42,
             ),
           ),
         ),
@@ -1050,30 +1162,74 @@ class _StatisticPageState extends State<StatisticPage> {
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.blue,
+            gradient: const LinearGradient(
+              colors: [Color(0xff3b82f6), Color(0xff1d4ed8)],
+            ),
             barWidth: 3,
+            isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, barData, index) {
                 if (index == _weeklyData.length - 1) {
                   return FlDotCirclePainter(
                     radius: 6,
-                    color: Colors.blue,
+                    color: Colors.white,
                     strokeWidth: 3,
-                    strokeColor: Colors.white,
+                    strokeColor: const Color(0xff1d4ed8),
                   );
                 }
-                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                return FlDotCirclePainter(
+                  radius: 3,
+                  color: const Color(0xff1d4ed8),
+                );
               },
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.blue.withOpacity(0.1),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xff3b82f6).withOpacity(0.4),
+                  const Color(0xff1d4ed8).withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
         ],
-        minY: 60,
-        maxY: 85,
+        minX: 0,
+        maxX: _weeklyData.isNotEmpty ? _weeklyData.length - 1 : 0,
+        minY: 0,
+        maxY: 100,
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (touchedSpot) => Colors.black87,
+            tooltipRoundedRadius: 8,
+            tooltipPadding: const EdgeInsets.all(8),
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots
+                  .map((barSpot) {
+                    int index = barSpot.x.toInt();
+                    if (index >= 0 && index < _weeklyData.length) {
+                      return LineTooltipItem(
+                        '${_weeklyData[index]['day']}\n${barSpot.y.toStringAsFixed(1)}%',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }
+                    return null;
+                  })
+                  .where((item) => item != null)
+                  .cast<LineTooltipItem>()
+                  .toList();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1083,46 +1239,67 @@ class _StatisticPageState extends State<StatisticPage> {
       LineChartData(
         gridData: FlGridData(
           show: true,
-          drawVerticalLine: false,
-          horizontalInterval: 0.5,
+          drawVerticalLine: true,
+          drawHorizontalLine: true,
+          horizontalInterval: 2,
+          verticalInterval: 1,
           getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
           },
         ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 35,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toStringAsFixed(1)}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                );
-              },
-            ),
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
           ),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              reservedSize: 30,
+              interval: 1,
               getTitlesWidget: (value, meta) {
                 int index = value.toInt();
                 if (index >= 0 && index < _weeklyData.length) {
                   return Text(
                     _weeklyData[index]['day'],
                     style: GoogleFonts.poppins(
-                      fontSize: 10,
+                      fontSize: 12,
                       color: Colors.grey[600],
                     ),
                   );
                 }
                 return const Text('');
               },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 2,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  value.toStringAsFixed(1),
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+              reservedSize: 42,
             ),
           ),
         ),
@@ -1137,30 +1314,74 @@ class _StatisticPageState extends State<StatisticPage> {
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.purple,
+            gradient: const LinearGradient(
+              colors: [Color(0xffa855f7), Color(0xff7c3aed)],
+            ),
             barWidth: 3,
+            isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, barData, index) {
                 if (index == _weeklyData.length - 1) {
                   return FlDotCirclePainter(
                     radius: 6,
-                    color: Colors.purple,
+                    color: Colors.white,
                     strokeWidth: 3,
-                    strokeColor: Colors.white,
+                    strokeColor: const Color(0xff7c3aed),
                   );
                 }
-                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                return FlDotCirclePainter(
+                  radius: 3,
+                  color: const Color(0xff7c3aed),
+                );
               },
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.purple.withOpacity(0.1),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xffa855f7).withOpacity(0.4),
+                  const Color(0xff7c3aed).withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
         ],
-        minY: 5.5,
-        maxY: 7.0,
+        minX: 0,
+        maxX: _weeklyData.isNotEmpty ? _weeklyData.length - 1 : 0,
+        minY: 0,
+        maxY: 14,
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (touchedSpot) => Colors.black87,
+            tooltipRoundedRadius: 8,
+            tooltipPadding: const EdgeInsets.all(8),
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots
+                  .map((barSpot) {
+                    int index = barSpot.x.toInt();
+                    if (index >= 0 && index < _weeklyData.length) {
+                      return LineTooltipItem(
+                        '${_weeklyData[index]['day']}\npH ${barSpot.y.toStringAsFixed(1)}',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }
+                    return null;
+                  })
+                  .where((item) => item != null)
+                  .cast<LineTooltipItem>()
+                  .toList();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1170,46 +1391,67 @@ class _StatisticPageState extends State<StatisticPage> {
       LineChartData(
         gridData: FlGridData(
           show: true,
-          drawVerticalLine: false,
-          horizontalInterval: 50,
+          drawVerticalLine: true,
+          drawHorizontalLine: true,
+          horizontalInterval: 200,
+          verticalInterval: 1,
           getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
           },
         ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 35,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toInt()}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                );
-              },
-            ),
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
           ),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              reservedSize: 30,
+              interval: 1,
               getTitlesWidget: (value, meta) {
                 int index = value.toInt();
                 if (index >= 0 && index < _weeklyData.length) {
                   return Text(
                     _weeklyData[index]['day'],
                     style: GoogleFonts.poppins(
-                      fontSize: 10,
+                      fontSize: 12,
                       color: Colors.grey[600],
                     ),
                   );
                 }
                 return const Text('');
               },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 200,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()} ppm',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+              reservedSize: 42,
             ),
           ),
         ),
@@ -1224,30 +1466,74 @@ class _StatisticPageState extends State<StatisticPage> {
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.teal,
+            gradient: const LinearGradient(
+              colors: [Color(0xff14b8a6), Color(0xff0d9488)],
+            ),
             barWidth: 3,
+            isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, barData, index) {
                 if (index == _weeklyData.length - 1) {
                   return FlDotCirclePainter(
                     radius: 6,
-                    color: Colors.teal,
+                    color: Colors.white,
                     strokeWidth: 3,
-                    strokeColor: Colors.white,
+                    strokeColor: const Color(0xff0d9488),
                   );
                 }
-                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                return FlDotCirclePainter(
+                  radius: 3,
+                  color: const Color(0xff0d9488),
+                );
               },
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.teal.withOpacity(0.1),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xff14b8a6).withOpacity(0.4),
+                  const Color(0xff0d9488).withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
         ],
-        minY: 800,
-        maxY: 950,
+        minX: 0,
+        maxX: _weeklyData.isNotEmpty ? _weeklyData.length - 1 : 0,
+        minY: 0,
+        maxY: 1500,
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (touchedSpot) => Colors.black87,
+            tooltipRoundedRadius: 8,
+            tooltipPadding: const EdgeInsets.all(8),
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots
+                  .map((barSpot) {
+                    int index = barSpot.x.toInt();
+                    if (index >= 0 && index < _weeklyData.length) {
+                      return LineTooltipItem(
+                        '${_weeklyData[index]['day']}\n${barSpot.y.toInt()} ppm',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }
+                    return null;
+                  })
+                  .where((item) => item != null)
+                  .cast<LineTooltipItem>()
+                  .toList();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1257,46 +1543,67 @@ class _StatisticPageState extends State<StatisticPage> {
       LineChartData(
         gridData: FlGridData(
           show: true,
-          drawVerticalLine: false,
+          drawVerticalLine: true,
+          drawHorizontalLine: true,
           horizontalInterval: 10,
+          verticalInterval: 1,
           getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1);
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey[200]!,
+              strokeWidth: 1,
+              dashArray: [3, 3],
+            );
           },
         ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 35,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toInt()}%',
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                );
-              },
-            ),
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
           ),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              reservedSize: 30,
+              interval: 1,
               getTitlesWidget: (value, meta) {
                 int index = value.toInt();
                 if (index >= 0 && index < _weeklyData.length) {
                   return Text(
                     _weeklyData[index]['day'],
                     style: GoogleFonts.poppins(
-                      fontSize: 10,
+                      fontSize: 12,
                       color: Colors.grey[600],
                     ),
                   );
                 }
                 return const Text('');
               },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 10,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()} cm',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                );
+              },
+              reservedSize: 42,
             ),
           ),
         ),
@@ -1311,30 +1618,74 @@ class _StatisticPageState extends State<StatisticPage> {
                   );
                 }).toList(),
             isCurved: true,
-            color: Colors.indigo,
+            gradient: const LinearGradient(
+              colors: [Color(0xff6366f1), Color(0xff4b3aed)],
+            ),
             barWidth: 3,
+            isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, barData, index) {
                 if (index == _weeklyData.length - 1) {
                   return FlDotCirclePainter(
                     radius: 6,
-                    color: Colors.indigo,
+                    color: Colors.white,
                     strokeWidth: 3,
-                    strokeColor: Colors.white,
+                    strokeColor: const Color(0xff4b3aed),
                   );
                 }
-                return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                return FlDotCirclePainter(
+                  radius: 3,
+                  color: const Color(0xff4b3aed),
+                );
               },
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.indigo.withOpacity(0.1),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xff6366f1).withOpacity(0.4),
+                  const Color(0xff4b3aed).withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
         ],
-        minY: 70,
-        maxY: 95,
+        minX: 0,
+        maxX: _weeklyData.isNotEmpty ? _weeklyData.length - 1 : 0,
+        minY: 0,
+        maxY: 100,
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (touchedSpot) => Colors.black87,
+            tooltipRoundedRadius: 8,
+            tooltipPadding: const EdgeInsets.all(8),
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots
+                  .map((barSpot) {
+                    int index = barSpot.x.toInt();
+                    if (index >= 0 && index < _weeklyData.length) {
+                      return LineTooltipItem(
+                        '${_weeklyData[index]['day']}\n${barSpot.y.toStringAsFixed(1)} cm',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }
+                    return null;
+                  })
+                  .where((item) => item != null)
+                  .cast<LineTooltipItem>()
+                  .toList();
+            },
+          ),
+        ),
       ),
     );
   }
